@@ -1366,8 +1366,8 @@ github.com/BurntSushi/toml v1.3.2/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbi
 github.com/BurntSushi/toml v1.4.0 h1:kuoIxZQy2WRRk1pttg9asf+WVv6tWQuBNVmK8+nqPr0=
 github.com/BurntSushi/toml v1.4.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
-github.com/Chaintable/pipeline v0.0.42-geth-v1.14.8-1 h1:ymeTaMREimzFC9a7JNWlEKPxTUyI9Ye/BOs8u2UDbxw=
-github.com/Chaintable/pipeline v0.0.42-geth-v1.14.8-1/go.mod h1:/hakRnL4Ldt9zMw/pJpiPKt5oKaN5BN9IFWSssVGA4U=
+github.com/Chaintable/pipeline v0.0.43-geth-v1.14.8-1 h1:CYrnpU7juvQMPOPuXKQABdqy5j1XHt6pqqIzteQ/mxg=
+github.com/Chaintable/pipeline v0.0.43-geth-v1.14.8-1/go.mod h1:/hakRnL4Ldt9zMw/pJpiPKt5oKaN5BN9IFWSssVGA4U=
 github.com/CloudyKit/fastprinter v0.0.0-20200109182630-33d98a066a53/go.mod h1:+3IMCy2vIlbG1XG/0ggNQv0SvxCAIpPM5b1nCz56Xno=
 github.com/CloudyKit/jet/v6 v6.2.0/go.mod h1:d3ypHeIRNo2+XyqnGA8s+aphtcVpjP5hPwP/Lzo7Ro4=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
