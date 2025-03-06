@@ -5,7 +5,7 @@ go 1.23.6
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.2
 	github.com/BurntSushi/toml v1.4.0
-	github.com/Chaintable/pipeline v0.0.43-geth-v1.14.8-1
+	github.com/Chaintable/pipeline v0.0.44-geth-v1.14.8-1
 	github.com/JekaMas/go-grpc-net-conn v0.0.0-20220708155319-6aff21f2d13d
 	github.com/JekaMas/workerpool v1.1.8
 	github.com/Microsoft/go-winio v0.6.2
