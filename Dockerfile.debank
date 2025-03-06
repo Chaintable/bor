@@ -1,4 +1,4 @@
-FROM golang:1.22.0-bullseye AS builder
+FROM golang:1.23.6 AS builder
 
 ARG ACCESS_TOKEN
 
