@@ -24,10 +24,6 @@ jobs:
         arch: [amd64]
     runs-on: [self-hosted, "${{ matrix.arch }}"]
     steps:
-      - name: Install Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: 1.23.6
 
       - name: Checkout code
         uses: actions/checkout@v2
