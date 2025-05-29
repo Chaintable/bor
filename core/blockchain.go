@@ -49,6 +49,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader/whitelist"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -61,6 +62,7 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -1858,6 +1860,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 			// Write bor tx reverse lookup
 			rawdb.WriteBorTxLookupEntry(blockBatch, block.Hash(), block.NumberU64())
+
+			if err := bc.appendBorTransaction(block, statedb); err != nil {
+				log.Crit("append bor transaction", "error", err)
+			}
 		}
 	}
 
@@ -3424,4 +3430,97 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 
 func (bc *BlockChain) SubscribeChain2HeadEvent(ch chan<- Chain2HeadEvent) event.Subscription {
 	return bc.scope.Track(bc.chain2HeadFeed.Subscribe(ch))
+}
+
+func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.StateDB) error {
+	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(block.Number().Uint64(), block.Hash()))
+	borTx, _, _, txIndex := rawdb.ReadBorTransactionWithBlockHash(bc.db, txHash, block.Hash())
+	if borTx != nil {
+		var (
+			statedbCopy = statedb.Copy()
+			blockCtx    = NewEVMBlockContext(block.Header(), bc, nil)
+			signer      = types.MakeSigner(bc.Config(), block.Number(), block.Time())
+		)
+		statedbCopy.SetTxContext(txHash, int(txIndex))
+		statedbCopy.SetLogger(bc.logger)
+
+		message, _ := TransactionToMessage(borTx, signer, block.BaseFee())
+		txContext := NewEVMTxContext(message)
+		vmenv := vm.NewEVM(blockCtx, txContext, statedbCopy, bc.Config(), vm.Config{Tracer: bc.logger, NoBaseFee: true})
+
+		_, err := applyBorMessageWithHook(*message, statedbCopy, block.Number(), block.Hash(), txHash, borTx, vmenv)
+		if err != nil {
+			return err
+		}
+		if len(tracer.BlockCtx.BlockFile.Txs) != 0 {
+			tracer.BlockCtx.BlockFile.Txs[len(tracer.BlockCtx.BlockFile.Txs)-1].ID = txHash.Hex()
+		}
+	}
+	return nil
+}
+
+// statefull.ApplyBorMessage
+func applyBorMessageWithHook(msg Message, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, txHash common.Hash, tx *types.Transaction, evm *vm.EVM) (receipt *types.Receipt, err error) {
+	if evm.Config.Tracer != nil && evm.Config.Tracer.OnTxStart != nil {
+		evm.Config.Tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+		if evm.Config.Tracer.OnTxEnd != nil {
+			defer func() {
+				receipt.SetEffectiveGasPrice(tx, evm.Context.BaseFee)
+				evm.Config.Tracer.OnTxEnd(receipt, err)
+			}()
+		}
+	}
+	initialGas := msg.GasLimit
+
+	// Apply the transaction to the current state (included in the env)
+	ret, gasLeft, err := evm.Call(
+		vm.AccountRef(msg.From),
+		*msg.To,
+		msg.Data,
+		msg.GasLimit,
+		uint256.NewInt(msg.Value.Uint64()),
+		nil,
+	)
+	// Update the state with pending changes
+	if err != nil {
+		evm.StateDB.Finalise(true)
+	}
+
+	gasUsed := initialGas - gasLeft
+	result := &ExecutionResult{
+		UsedGas:    gasUsed,
+		Err:        err,
+		ReturnData: ret,
+	}
+
+	// Create a new receipt for the transaction, storing the intermediate root and gas used
+	// by the tx.
+	receipt = &types.Receipt{Type: tx.Type()}
+	if result.Failed() {
+		receipt.Status = types.ReceiptStatusFailed
+	} else {
+		receipt.Status = types.ReceiptStatusSuccessful
+	}
+
+	receipt.TxHash = txHash
+	receipt.GasUsed = result.UsedGas
+
+	if tx.Type() == types.BlobTxType {
+		receipt.BlobGasUsed = uint64(len(tx.BlobHashes()) * params.BlobTxBlobGasPerBlob)
+		receipt.BlobGasPrice = evm.Context.BlobBaseFee
+	}
+
+	// If the transaction created a contract, store the creation address in the receipt.
+	if msg.To == nil {
+		receipt.ContractAddress = crypto.CreateAddress(evm.TxContext.Origin, tx.Nonce())
+	}
+
+	// Set the receipt logs and create the bloom filter.
+	receipt.Logs = statedb.GetLogs(tx.Hash(), blockNumber.Uint64(), blockHash)
+	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
+	receipt.BlockHash = blockHash
+	receipt.BlockNumber = blockNumber
+	receipt.TransactionIndex = uint(statedb.TxIndex())
+
+	return receipt, nil
 }
