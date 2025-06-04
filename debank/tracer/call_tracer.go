@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	ptypes "github.com/ethereum/go-ethereum/debank/types"
 	"github.com/ethereum/go-ethereum/debank/util"
+	elog "github.com/ethereum/go-ethereum/log"
 )
 
 type callFrame struct {
@@ -171,6 +172,7 @@ func (t *callTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope tr
 
 // OnEnter is called when EVM enters a new scope (via call, create or selfdestruct).
 func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+	elog.Info("OnEnter")
 	t.depth = depth
 	if t.config.OnlyTopCall && depth > 0 {
 		return
@@ -195,6 +197,7 @@ func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common
 // OnExit is called when EVM exits a scope, even if the scope didn't
 // execute any code.
 func (t *callTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+	elog.Info("OnExit", "callstack length", len(t.callstack))
 	if depth == 0 {
 		t.captureEnd(output, gasUsed, err, reverted)
 		return
@@ -219,6 +222,7 @@ func (t *callTracer) OnExit(depth int, output []byte, gasUsed uint64, err error,
 	// Nest call into parent.
 	// 忽略失败的调用
 	if !call.failed() {
+		elog.Info("OnExit", "call", call, "callstack size", size, "callstack length", len(t.callstack))
 		call.PosInParentTrace = len(t.callstack[size-1].Calls) + len(t.callstack[size-1].Logs)
 		t.callstack[size-1].Calls = append(t.callstack[size-1].Calls, call)
 	}
@@ -233,11 +237,13 @@ func (t *callTracer) captureEnd(output []byte, gasUsed uint64, err error, revert
 }
 
 func (t *callTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
+	elog.Info("OnTxStart", "tx", tx)
 	t.gasLimit = tx.Gas()
 	t.txID = tx.Hash().Hex()
 }
 
 func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
+	elog.Info("OnTxEnd", "receipt", receipt)
 	// Error happened during tx validation.
 	if err != nil {
 		return
@@ -253,6 +259,7 @@ func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
 }
 
 func (t *callTracer) OnLog(log *types.Log) {
+	elog.Info("OnLog")
 	// Only logs need to be captured via opcode processing
 	if !t.config.WithLog {
 		return
