@@ -198,6 +198,9 @@ func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common
 // execute any code.
 func (t *callTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
 	elog.Info("OnExit", "callstack length", len(t.callstack))
+	defer func() {
+		elog.Info("OnExit finish", "callstack length", len(t.callstack))
+	}()
 	if depth == 0 {
 		t.captureEnd(output, gasUsed, err, reverted)
 		return
@@ -222,8 +225,6 @@ func (t *callTracer) OnExit(depth int, output []byte, gasUsed uint64, err error,
 	// Nest call into parent.
 	// 忽略失败的调用
 	if !call.failed() {
-		lastCall := t.callstack[size-1]
-		elog.Info("OnExit", "call", call, "callstack size", size, "callstack length", len(t.callstack), "last call", lastCall)
 		call.PosInParentTrace = len(t.callstack[size-1].Calls) + len(t.callstack[size-1].Logs)
 		t.callstack[size-1].Calls = append(t.callstack[size-1].Calls, call)
 	}
