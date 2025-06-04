@@ -34,8 +34,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Chaintable/pipeline/tracer"
-	ptypes "github.com/Chaintable/pipeline/types"
+	"github.com/ethereum/go-ethereum/debank/tracer"
+	ptypes "github.com/ethereum/go-ethereum/debank/types"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"

@@ -3,8 +3,8 @@ package live
 import (
 	"encoding/json"
 
-	"github.com/Chaintable/pipeline/tracer"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/debank/tracer"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 )
 
