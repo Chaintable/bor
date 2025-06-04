@@ -216,13 +216,14 @@ func (t *callTracer) OnExit(depth int, output []byte, gasUsed uint64, err error,
 	call := t.callstack[size-1]
 	t.callstack = t.callstack[:size-1]
 	size -= 1
-	elog.Info("OnExit", "call", call, "callstack size", size, "callstack length", len(t.callstack))
 
 	call.GasUsed = gasUsed
 	call.processOutput(output, err, reverted)
 	// Nest call into parent.
 	// 忽略失败的调用
 	if !call.failed() {
+		lastCall := t.callstack[size-1]
+		elog.Info("OnExit", "call", call, "callstack size", size, "callstack length", len(t.callstack), "last call", lastCall)
 		call.PosInParentTrace = len(t.callstack[size-1].Calls) + len(t.callstack[size-1].Logs)
 		t.callstack[size-1].Calls = append(t.callstack[size-1].Calls, call)
 	}
