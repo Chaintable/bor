@@ -1861,9 +1861,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			// Write bor tx reverse lookup
 			rawdb.WriteBorTxLookupEntry(blockBatch, block.Hash(), block.NumberU64())
 
-			//if err := bc.appendBorTransaction(block, statedb); err != nil {
-			//	log.Crit("append bor transaction", "error", err)
-			//}
+			if err := bc.appendBorTransaction(block, statedb); err != nil {
+				log.Crit("append bor transaction", "error", err)
+			}
 		}
 	}
 
