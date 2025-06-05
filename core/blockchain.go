@@ -3446,7 +3446,7 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 
 		message, _ := TransactionToMessage(borTx, signer, block.BaseFee())
 		txContext := NewEVMTxContext(message)
-		vmenv := vm.NewEVM(blockCtx, txContext, statedbCopy, bc.Config(), vm.Config{Tracer: bc.logger, NoBaseFee: true})
+		vmenv := vm.NewEVM(blockCtx, txContext, statedbCopy, bc.Config(), bc.vmConfig)
 
 		_, err := applyBorMessageWithHook(*message, statedbCopy, block.Number(), block.Hash(), txHash, borTx, vmenv)
 		if err != nil {
