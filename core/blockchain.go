@@ -1861,9 +1861,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			// Write bor tx reverse lookup
 			rawdb.WriteBorTxLookupEntry(blockBatch, block.Hash(), block.NumberU64())
 
-			if err := bc.appendBorTransaction(block, statedb); err != nil {
-				log.Crit("append bor transaction", "error", err)
-			}
 		}
 	}
 
@@ -1871,6 +1868,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
+	}
+	if len(blockLogs) > 0 {
+		if len(blockLogs) > len(logs) {
+			if err := bc.appendBorTransaction(block, statedb); err != nil {
+				log.Crit("append bor transaction", "error", err)
+			}
+		}
 	}
 	// Commit all cached state changes into underlying memory database.
 	root, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()))
