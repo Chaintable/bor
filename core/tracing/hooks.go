@@ -170,6 +170,9 @@ type (
 
 	// CommitHook is called when the state is committed.
 	CommitHook = func(originRoot common.Hash, root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, accountsOrigin map[common.Address][]byte, storages map[common.Hash]map[common.Hash][]byte, storagesOrigin map[common.Address]map[common.Hash][]byte, codes map[common.Hash][]byte)
+
+	// BorTxStartHook is called before the execution of a bor transaction starts.
+	BorTxStartHook = func(vm *VMContext, tx *types.Transaction, txHash common.Hash, from common.Address)
 )
 
 type Hooks struct {
@@ -198,7 +201,8 @@ type Hooks struct {
 	OnLog           LogHook
 
 	// custom hook
-	OnCommit CommitHook
+	OnCommit     CommitHook
+	OnBorTxStart BorTxStartHook
 }
 
 // BalanceChangeReason is used to indicate the reason for a balance change, useful

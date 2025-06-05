@@ -114,6 +114,15 @@ func (t *PipelineTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transaction,
 	BlockCtx.TxStartTime = time.Now()
 }
 
+func (t *PipelineTracer) OnBorTxStart(vm *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
+	callTracer := newCallTracerRaw()
+	t.callTracer = callTracer
+	t.callTracer.OnBorTxStart(vm, tx, txHash, from)
+	BlockCtx.Tx = tx
+	BlockCtx.From = from
+	BlockCtx.TxStartTime = time.Now()
+}
+
 func (t *PipelineTracer) OnTxEnd(receipt *types.Receipt, err error) {
 	defer func() {
 		metrics.BlockTxExecutionTimer.UpdateSince(BlockCtx.TxStartTime)

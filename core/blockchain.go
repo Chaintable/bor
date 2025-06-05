@@ -3453,17 +3453,14 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 		if err != nil {
 			return err
 		}
-		if len(tracer.BlockCtx.BlockFile.Txs) != 0 {
-			tracer.BlockCtx.BlockFile.Txs[len(tracer.BlockCtx.BlockFile.Txs)-1].ID = txHash.Hex()
-		}
 	}
 	return nil
 }
 
 // statefull.ApplyBorMessage
 func applyBorMessageWithHook(msg Message, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, txHash common.Hash, tx *types.Transaction, evm *vm.EVM) (receipt *types.Receipt, err error) {
-	if evm.Config.Tracer != nil && evm.Config.Tracer.OnTxStart != nil {
-		evm.Config.Tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+	if evm.Config.Tracer != nil && evm.Config.Tracer.OnBorTxStart != nil {
+		evm.Config.Tracer.OnBorTxStart(evm.GetVMContext(), tx, txHash, msg.From)
 		if evm.Config.Tracer.OnTxEnd != nil {
 			defer func() {
 				receipt.SetEffectiveGasPrice(tx, evm.Context.BaseFee)

@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"strings"
 	"sync/atomic"
@@ -235,6 +236,12 @@ func (t *callTracer) captureEnd(output []byte, gasUsed uint64, err error, revert
 func (t *callTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
 	t.gasLimit = tx.Gas()
 	t.txID = tx.Hash().Hex()
+}
+
+func (t *callTracer) OnBorTxStart(env *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
+	log.Info("OnBorTxStart", "blockNumber", env.BlockNumber, "txHash", txHash.Hex(), "tx", tx)
+	t.gasLimit = tx.Gas()
+	t.txID = txHash.Hex()
 }
 
 func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
