@@ -173,7 +173,9 @@ func (t *callTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope tr
 // OnEnter is called when EVM enters a new scope (via call, create or selfdestruct).
 func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
 	elog.Info("OnEnter", "callstack length", len(t.callstack))
-	defer elog.Info("OnEnter finish", "callstack length", len(t.callstack))
+	defer func() {
+		elog.Info("OnEnter finish", "callstack length", len(t.callstack))
+	}()
 	t.depth = depth
 	if t.config.OnlyTopCall && depth > 0 {
 		return
