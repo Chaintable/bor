@@ -48,6 +48,8 @@ func NewBorStateSyncTxnTracer(
 		OnCodeChange:    l.OnCodeChange,
 		OnStorageChange: l.OnStorageChange,
 		OnLog:           l.OnLog,
+		OnCommit:        l.OnCommit,
+		OnBorTxStart:    l.OnBorTxStart,
 	}
 }
 
@@ -69,6 +71,12 @@ type borStateSyncTxnTracer struct { /// LOOKS WRONG
 func (bsstt *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
 	if bsstt.Tracer.OnTxStart != nil {
 		bsstt.Tracer.OnTxStart(env, tx, from)
+	}
+}
+
+func (bsstt *borStateSyncTxnTracer) OnBorTxStart(env *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
+	if bsstt.Tracer.OnBorTxStart != nil {
+		bsstt.Tracer.OnBorTxStart(env, tx, txHash, from)
 	}
 }
 
@@ -166,5 +174,11 @@ func (bsstt *borStateSyncTxnTracer) OnStorageChange(a common.Address, k common.H
 func (bsstt *borStateSyncTxnTracer) OnLog(log *types.Log) {
 	if bsstt.Tracer.OnLog != nil {
 		bsstt.Tracer.OnLog(log)
+	}
+}
+
+func (bsstt *borStateSyncTxnTracer) OnCommit(originRoot common.Hash, root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, accountsOrigin map[common.Address][]byte, storages map[common.Hash]map[common.Hash][]byte, storagesOrigin map[common.Address]map[common.Hash][]byte, codes map[common.Hash][]byte) {
+	if bsstt.Tracer.OnCommit != nil {
+		bsstt.Tracer.OnCommit(originRoot, root, destructs, accounts, accountsOrigin, storages, storagesOrigin, codes)
 	}
 }
