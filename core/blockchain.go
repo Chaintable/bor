@@ -3474,9 +3474,7 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 				BlobHashes:        nil,
 				SkipAccountChecks: false,
 			}
-			gp := new(GasPool).AddGas(msg.GasLimit)
-
-			_, err := ApplyMessage(vmenv, &msg, gp, nil)
+			_, err := applyBorMessage(vmenv, msg)
 			if err != nil {
 				return err
 			}
@@ -3484,6 +3482,32 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 
 	}
 	return nil
+}
+
+func applyBorMessage(vmenv *vm.EVM, msg Message) (*ExecutionResult, error) {
+	initialGas := msg.GasLimit
+
+	// Apply the transaction to the current state (included in the env)
+	ret, gasLeft, err := vmenv.Call(
+		vm.AccountRef(msg.From),
+		*msg.To,
+		msg.Data,
+		msg.GasLimit,
+		uint256.NewInt(msg.Value.Uint64()),
+		nil,
+	)
+	// Update the state with pending changes
+	if err != nil {
+		vmenv.StateDB.Finalise(true)
+	}
+
+	gasUsed := initialGas - gasLeft
+
+	return &ExecutionResult{
+		UsedGas:    gasUsed,
+		Err:        err,
+		ReturnData: ret,
+	}, nil
 }
 
 // statefull.ApplyBorMessage
