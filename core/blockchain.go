@@ -3456,8 +3456,8 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 			message, _            = TransactionToMessage(borTx, signer, block.BaseFee())
 			txContext             = NewEVMTxContext(message)
 			stateReceiverContract = common.HexToAddress(bc.chainConfig.Bor.StateReceiverContract)
-			vmenv                 = vm.NewEVM(blockCtx, txContext, statedbCopy, bc.Config(), vm.Config{Tracer: tracer.NewBorStateSyncTxnTracer(bc.vmConfig.Tracer, len(bc.stateSyncData), stateReceiverContract), NoBaseFee: true})
 			stateSyncData         = bc.GetStateSync()
+			vmenv                 = vm.NewEVM(blockCtx, txContext, statedbCopy, bc.Config(), vm.Config{Tracer: tracer.NewBorStateSyncTxnTracer(bc.vmConfig.Tracer, len(stateSyncData), stateReceiverContract), NoBaseFee: true})
 		)
 
 		for _, data := range stateSyncData {
@@ -3466,22 +3466,9 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 				log.Error("Failed to decode transaction", "err", err)
 				return err
 			}
-			msg := Message{
-				To:                &stateReceiverContract,
-				From:              common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe"),
-				Nonce:             0,
-				Value:             big.NewInt(0),
-				GasLimit:          30_000_000,
-				GasPrice:          big.NewInt(0),
-				GasFeeCap:         big.NewInt(0),
-				GasTipCap:         big.NewInt(0),
-				Data:              tData,
-				AccessList:        nil,
-				BlobGasFeeCap:     big.NewInt(0),
-				BlobHashes:        nil,
-				SkipAccountChecks: false,
-			}
-			_, err = applyBorMessage(vmenv, msg)
+			tx := types.NewTransaction(0, stateReceiverContract, big.NewInt(0), 30_000_000, big.NewInt(0), tData)
+			msg, _ := TransactionToMessage(tx, signer, block.BaseFee())
+			_, err = applyBorMessage(vmenv, *msg)
 			if err != nil {
 				return err
 			}
