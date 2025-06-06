@@ -3468,9 +3468,13 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 			}
 			tx := types.NewTransaction(0, stateReceiverContract, big.NewInt(0), 30_000_000, big.NewInt(0), tData)
 			msg, _ := TransactionToMessage(tx, signer, block.BaseFee())
-			_, err = applyBorMessage(vmenv, *msg)
+			result, err := applyBorMessage(vmenv, *msg)
 			if err != nil {
 				return err
+			}
+			{
+				res, _ := json.Marshal(result)
+				log.Info("apply bor message", "result", string(res))
 			}
 		}
 
