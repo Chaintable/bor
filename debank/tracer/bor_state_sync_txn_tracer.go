@@ -64,9 +64,9 @@ type borStateSyncTxnTracer struct {
 	remainingEvents int
 	totalEvents     int
 	stateReceiver   common.Address
-	topLevelCreated bool
 	reason          error
 	logger          log.Logger
+	depth           int
 }
 
 func (t *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
@@ -94,12 +94,11 @@ func (t *borStateSyncTxnTracer) OnTxEnd(receipt *types.Receipt, err error) {
 func (t *borStateSyncTxnTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
 	t.logger.Info("OnEnter", "depth", depth, "remainingEvents", t.remainingEvents)
 	if t.tracer.OnEnter != nil {
-		if !t.topLevelCreated {
+		if t.depth == 0 {
 			t.tracer.OnEnter(0, byte(vm.CALL), systemAddress, t.stateReceiver, nil, 0, big.NewInt(0))
-			t.topLevelCreated = true
 		}
-
-		t.tracer.OnEnter(depth+1, typ, from, to, input, gas, value)
+		t.depth++
+		t.tracer.OnEnter(t.depth, typ, from, to, input, gas, value)
 	}
 }
 
@@ -111,15 +110,18 @@ func (t *borStateSyncTxnTracer) OnExit(depth int, output []byte, gasUsed uint64,
 
 	if t.tracer.OnExit != nil {
 		t.tracer.OnExit(
-			depth+1,
+			t.depth,
 			output,
 			gasUsed,
 			err,
 			reverted,
 		)
+		t.depth--
 	}
 
-	t.remainingEvents--
+	if depth == 0 {
+		t.remainingEvents--
+	}
 	if t.remainingEvents == 0 {
 		if t.tracer.OnExit != nil {
 			t.tracer.OnExit(0, nil, 0, nil, false)
@@ -131,7 +133,7 @@ func (t *borStateSyncTxnTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, s
 	t.logger.Info("OnOpcode")
 	if t.tracer.OnOpcode != nil {
 		// trick tracer to think it is 1 level deeper
-		t.tracer.OnOpcode(pc, op, gas, cost, scope, rData, depth+1, err)
+		t.tracer.OnOpcode(pc, op, gas, cost, scope, rData, t.depth, err)
 	}
 }
 
@@ -139,7 +141,7 @@ func (t *borStateSyncTxnTracer) OnFault(pc uint64, op byte, gas, cost uint64, sc
 	t.logger.Info("OnFault")
 	if t.tracer.OnFault != nil {
 		// trick tracer to think it is 1 level deeper
-		t.tracer.OnFault(pc, op, gas, cost, scope, depth+1, err)
+		t.tracer.OnFault(pc, op, gas, cost, scope, t.depth, err)
 	}
 }
 
