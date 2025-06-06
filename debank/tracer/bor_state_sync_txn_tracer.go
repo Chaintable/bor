@@ -32,7 +32,7 @@ func NewBorStateSyncTxnTracer(
 	stateSyncEventsCount int,
 	stateReceiverContract common.Address,
 ) *tracing.Hooks {
-	t := &borStateSyncTracer{
+	t := &borStateSyncTxnTracer{
 		tracer:          tracer,
 		remainingEvents: stateSyncEventsCount,
 		totalEvents:     stateSyncEventsCount,
@@ -57,7 +57,7 @@ func NewBorStateSyncTxnTracer(
 	}
 }
 
-type borStateSyncTracer struct {
+type borStateSyncTxnTracer struct {
 	tracer          *tracing.Hooks
 	remainingEvents int
 	totalEvents     int
@@ -66,26 +66,26 @@ type borStateSyncTracer struct {
 	reason          error
 }
 
-func (t *borStateSyncTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
+func (t *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
 	if t.remainingEvents == t.totalEvents && t.tracer.OnTxStart != nil {
 		// 触发虚拟交易开始
 		t.tracer.OnTxStart(env, tx, from)
 	}
 }
 
-func (t *borStateSyncTracer) OnBorTxStart(env *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
+func (t *borStateSyncTxnTracer) OnBorTxStart(env *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
 	if t.remainingEvents == t.totalEvents && t.tracer.OnBorTxStart != nil {
 		t.tracer.OnBorTxStart(env, tx, txHash, from)
 	}
 }
 
-func (t *borStateSyncTracer) OnTxEnd(receipt *types.Receipt, err error) {
+func (t *borStateSyncTxnTracer) OnTxEnd(receipt *types.Receipt, err error) {
 	if t.remainingEvents == 0 && t.tracer.OnTxEnd != nil {
 		t.tracer.OnTxEnd(receipt, err)
 	}
 }
 
-func (t *borStateSyncTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+func (t *borStateSyncTxnTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
 	if t.tracer.OnEnter != nil {
 		if !t.topLevelCreated {
 			t.tracer.OnEnter(0, byte(vm.CALL), systemAddress, t.stateReceiver, nil, 0, big.NewInt(0))
@@ -96,7 +96,7 @@ func (t *borStateSyncTracer) OnEnter(depth int, typ byte, from common.Address, t
 	}
 }
 
-func (t *borStateSyncTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+func (t *borStateSyncTxnTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
 	if t.remainingEvents <= 0 {
 		panic("unexpected extra exit event")
 	}
@@ -119,14 +119,14 @@ func (t *borStateSyncTracer) OnExit(depth int, output []byte, gasUsed uint64, er
 	}
 }
 
-func (t *borStateSyncTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+func (t *borStateSyncTxnTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
 	if t.tracer.OnOpcode != nil {
 		// trick tracer to think it is 1 level deeper
 		t.tracer.OnOpcode(pc, op, gas, cost, scope, rData, depth+1, err)
 	}
 }
 
-func (t *borStateSyncTracer) OnFault(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, depth int, err error) {
+func (t *borStateSyncTxnTracer) OnFault(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, depth int, err error) {
 	if t.tracer.OnFault != nil {
 		// trick tracer to think it is 1 level deeper
 		t.tracer.OnFault(pc, op, gas, cost, scope, depth+1, err)
@@ -134,61 +134,61 @@ func (t *borStateSyncTracer) OnFault(pc uint64, op byte, gas, cost uint64, scope
 }
 
 // OnGasChange is called when gas is either consumed or refunded.
-func (t *borStateSyncTracer) OnGasChange(old, new uint64, reason tracing.GasChangeReason) {
+func (t *borStateSyncTxnTracer) OnGasChange(old, new uint64, reason tracing.GasChangeReason) {
 	if t.tracer.OnGasChange != nil {
 		t.tracer.OnGasChange(old, new, reason)
 	}
 }
 
-func (t *borStateSyncTracer) OnBlockStart(event tracing.BlockEvent) {
+func (t *borStateSyncTxnTracer) OnBlockStart(event tracing.BlockEvent) {
 	if t.tracer.OnBlockStart != nil {
 		t.tracer.OnBlockStart(event)
 	}
 }
 
-func (t *borStateSyncTracer) OnBlockEnd(err error) {
+func (t *borStateSyncTxnTracer) OnBlockEnd(err error) {
 	if t.tracer.OnBlockEnd != nil {
 		t.tracer.OnBlockEnd(err)
 	}
 }
 
-func (t *borStateSyncTracer) OnGenesisBlock(b *types.Block, alloc types.GenesisAlloc) {
+func (t *borStateSyncTxnTracer) OnGenesisBlock(b *types.Block, alloc types.GenesisAlloc) {
 	if t.tracer.OnGenesisBlock != nil {
 		t.tracer.OnGenesisBlock(b, alloc)
 	}
 }
 
-func (t *borStateSyncTracer) OnBalanceChange(a common.Address, prev, new *big.Int, reason tracing.BalanceChangeReason) {
+func (t *borStateSyncTxnTracer) OnBalanceChange(a common.Address, prev, new *big.Int, reason tracing.BalanceChangeReason) {
 	if t.tracer.OnBalanceChange != nil {
 		t.tracer.OnBalanceChange(a, prev, new, reason)
 	}
 }
 
-func (t *borStateSyncTracer) OnNonceChange(a common.Address, prev, new uint64) {
+func (t *borStateSyncTxnTracer) OnNonceChange(a common.Address, prev, new uint64) {
 	if t.tracer.OnNonceChange != nil {
 		t.tracer.OnNonceChange(a, prev, new)
 	}
 }
 
-func (t *borStateSyncTracer) OnCodeChange(a common.Address, prevCodeHash common.Hash, prev []byte, codeHash common.Hash, code []byte) {
+func (t *borStateSyncTxnTracer) OnCodeChange(a common.Address, prevCodeHash common.Hash, prev []byte, codeHash common.Hash, code []byte) {
 	if t.tracer.OnCodeChange != nil {
 		t.tracer.OnCodeChange(a, prevCodeHash, prev, codeHash, code)
 	}
 }
 
-func (t *borStateSyncTracer) OnStorageChange(a common.Address, k common.Hash, prev, new common.Hash) {
+func (t *borStateSyncTxnTracer) OnStorageChange(a common.Address, k common.Hash, prev, new common.Hash) {
 	if t.tracer.OnStorageChange != nil {
 		t.tracer.OnStorageChange(a, k, prev, new)
 	}
 }
 
-func (t *borStateSyncTracer) OnLog(log *types.Log) {
+func (t *borStateSyncTxnTracer) OnLog(log *types.Log) {
 	if t.tracer.OnLog != nil {
 		t.tracer.OnLog(log)
 	}
 }
 
-func (t *borStateSyncTracer) OnCommit(originRoot common.Hash, root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, accountsOrigin map[common.Address][]byte, storages map[common.Hash]map[common.Hash][]byte, storagesOrigin map[common.Address]map[common.Hash][]byte, codes map[common.Hash][]byte) {
+func (t *borStateSyncTxnTracer) OnCommit(originRoot common.Hash, root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, accountsOrigin map[common.Address][]byte, storages map[common.Hash]map[common.Hash][]byte, storagesOrigin map[common.Address]map[common.Hash][]byte, codes map[common.Hash][]byte) {
 	if t.tracer.OnCommit != nil {
 		t.tracer.OnCommit(originRoot, root, destructs, accounts, accountsOrigin, storages, storagesOrigin, codes)
 	}
