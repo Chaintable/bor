@@ -1873,7 +1873,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 	if len(blockLogs) > 0 {
 		if len(blockLogs) > len(logs) {
-			if err := bc.appendBorTransaction(block, statedb); err != nil {
+			if err := bc.appendBorTransaction(block, statedb, &types.Receipt{
+				Status: types.ReceiptStatusSuccessful,
+				Logs:   stateSyncLogs,
+			}); err != nil {
 				log.Crit("append bor transaction", "error", err)
 			}
 		}
@@ -3438,7 +3441,7 @@ func (bc *BlockChain) SubscribeChain2HeadEvent(ch chan<- Chain2HeadEvent) event.
 	return bc.scope.Track(bc.chain2HeadFeed.Subscribe(ch))
 }
 
-func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.StateDB) error {
+func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.StateDB, receipt *types.Receipt) (err error) {
 	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(block.Number().Uint64(), block.Hash()))
 	borTx, _, _, txIndex := rawdb.ReadBorTransactionWithBlockHash(bc.db, txHash, block.Hash())
 	bytes, _ := json.Marshal(bc.GetStateSync())
@@ -3460,6 +3463,14 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 			vmenv                 = vm.NewEVM(blockCtx, txContext, statedbCopy, bc.Config(), vm.Config{Tracer: tracer.NewBorStateSyncTxnTracer(bc.vmConfig.Tracer, len(stateSyncData), stateReceiverContract), NoBaseFee: true})
 		)
 
+		if vmenv.Config.Tracer != nil && vmenv.Config.Tracer.OnBorTxStart != nil {
+			vmenv.Config.Tracer.OnBorTxStart(vmenv.GetVMContext(), borTx, txHash, message.From)
+		}
+		defer func() {
+			if vmenv.Config.Tracer != nil && vmenv.Config.Tracer.OnTxEnd != nil {
+				vmenv.Config.Tracer.OnTxEnd(receipt, err)
+			}
+		}()
 		for _, data := range stateSyncData {
 			tData, err := hex.DecodeString(data.Data)
 			if err != nil {
@@ -3482,11 +3493,11 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 	return nil
 }
 
-func applyBorMessage(vmenv *vm.EVM, msg Message) (*ExecutionResult, error) {
+func applyBorMessage(evm *vm.EVM, msg Message) (*ExecutionResult, error) {
 	initialGas := msg.GasLimit
 
 	// Apply the transaction to the current state (included in the env)
-	ret, gasLeft, err := vmenv.Call(
+	ret, gasLeft, err := evm.Call(
 		vm.AccountRef(msg.From),
 		*msg.To,
 		msg.Data,
@@ -3496,7 +3507,7 @@ func applyBorMessage(vmenv *vm.EVM, msg Message) (*ExecutionResult, error) {
 	)
 	// Update the state with pending changes
 	if err != nil {
-		vmenv.StateDB.Finalise(true)
+		evm.StateDB.Finalise(true)
 	}
 
 	gasUsed := initialGas - gasLeft

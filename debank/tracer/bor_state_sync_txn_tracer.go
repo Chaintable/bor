@@ -17,6 +17,7 @@
 package tracer
 
 import (
+	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -67,6 +68,7 @@ type borStateSyncTxnTracer struct {
 }
 
 func (t *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
+	log.Info("OnTxStart")
 	if t.remainingEvents == t.totalEvents && t.tracer.OnTxStart != nil {
 		// 触发虚拟交易开始
 		t.tracer.OnTxStart(env, tx, from)
@@ -74,18 +76,21 @@ func (t *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Tran
 }
 
 func (t *borStateSyncTxnTracer) OnBorTxStart(env *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
+	log.Info("OnBorTxStart", "txHash", txHash.Hex())
 	if t.remainingEvents == t.totalEvents && t.tracer.OnBorTxStart != nil {
 		t.tracer.OnBorTxStart(env, tx, txHash, from)
 	}
 }
 
 func (t *borStateSyncTxnTracer) OnTxEnd(receipt *types.Receipt, err error) {
+	log.Info("OnTxEnd")
 	if t.remainingEvents == 0 && t.tracer.OnTxEnd != nil {
 		t.tracer.OnTxEnd(receipt, err)
 	}
 }
 
 func (t *borStateSyncTxnTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+	log.Info("OnEnter")
 	if t.tracer.OnEnter != nil {
 		if !t.topLevelCreated {
 			t.tracer.OnEnter(0, byte(vm.CALL), systemAddress, t.stateReceiver, nil, 0, big.NewInt(0))
@@ -97,6 +102,7 @@ func (t *borStateSyncTxnTracer) OnEnter(depth int, typ byte, from common.Address
 }
 
 func (t *borStateSyncTxnTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+	log.Info("OnExit")
 	if t.remainingEvents <= 0 {
 		panic("unexpected extra exit event")
 	}
@@ -120,6 +126,7 @@ func (t *borStateSyncTxnTracer) OnExit(depth int, output []byte, gasUsed uint64,
 }
 
 func (t *borStateSyncTxnTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+	log.Info("OnOpcode")
 	if t.tracer.OnOpcode != nil {
 		// trick tracer to think it is 1 level deeper
 		t.tracer.OnOpcode(pc, op, gas, cost, scope, rData, depth+1, err)
@@ -127,6 +134,7 @@ func (t *borStateSyncTxnTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, s
 }
 
 func (t *borStateSyncTxnTracer) OnFault(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, depth int, err error) {
+	log.Info("OnFault")
 	if t.tracer.OnFault != nil {
 		// trick tracer to think it is 1 level deeper
 		t.tracer.OnFault(pc, op, gas, cost, scope, depth+1, err)
