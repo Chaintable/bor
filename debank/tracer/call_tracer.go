@@ -164,6 +164,7 @@ func (t *callTracer) ToTrace(f *callFrame, traceAddress []int64) ptypes.Trace {
 }
 
 func (t *callTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+	log.Info("OnOpcode")
 	if vm.OpCode(opcode) == vm.SSTORE {
 		t.callstack[len(t.callstack)-1].SelfStorageChange = true
 		t.callstack[len(t.callstack)-1].StorageChange = true
@@ -172,6 +173,7 @@ func (t *callTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope tr
 
 // OnEnter is called when EVM enters a new scope (via call, create or selfdestruct).
 func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+	log.Info("OnEnter")
 	t.depth = depth
 	if t.config.OnlyTopCall && depth > 0 {
 		return
@@ -196,6 +198,7 @@ func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common
 // OnExit is called when EVM exits a scope, even if the scope didn't
 // execute any code.
 func (t *callTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+	log.Info("OnExit")
 	if depth == 0 {
 		t.captureEnd(output, gasUsed, err, reverted)
 		return
@@ -234,6 +237,7 @@ func (t *callTracer) captureEnd(output []byte, gasUsed uint64, err error, revert
 }
 
 func (t *callTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
+	log.Info("OnTxStart", "tx", tx)
 	t.gasLimit = tx.Gas()
 	t.txID = tx.Hash().Hex()
 }
@@ -245,6 +249,7 @@ func (t *callTracer) OnBorTxStart(env *tracing.VMContext, tx *types.Transaction,
 }
 
 func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
+	log.Info("OnTxEnd", "receipt", receipt)
 	// Error happened during tx validation.
 	if err != nil {
 		return
