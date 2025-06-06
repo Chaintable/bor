@@ -20,6 +20,7 @@ package core
 import (
 	"compress/gzip"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -3460,7 +3461,11 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 		)
 
 		for _, data := range stateSyncData {
-
+			tData, err := hex.DecodeString(data.Data)
+			if err != nil {
+				log.Error("Failed to decode transaction", "err", err)
+				return err
+			}
 			msg := Message{
 				To:                &stateReceiverContract,
 				From:              common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe"),
@@ -3470,13 +3475,13 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 				GasPrice:          big.NewInt(0),
 				GasFeeCap:         big.NewInt(0),
 				GasTipCap:         big.NewInt(0),
-				Data:              []byte(data.Data),
+				Data:              tData,
 				AccessList:        nil,
 				BlobGasFeeCap:     big.NewInt(0),
 				BlobHashes:        nil,
 				SkipAccountChecks: false,
 			}
-			_, err := applyBorMessage(vmenv, msg)
+			_, err = applyBorMessage(vmenv, msg)
 			if err != nil {
 				return err
 			}
