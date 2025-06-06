@@ -3458,11 +3458,10 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 		)
 
 		for _, data := range stateSyncData {
-			var systemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 
 			msg := Message{
-				To:                &systemAddress,
-				From:              common.HexToAddress(bc.chainConfig.Bor.StateReceiverContract),
+				To:                &stateReceiverContract,
+				From:              common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe"),
 				Nonce:             0,
 				Value:             nil,
 				GasLimit:          30_000_000,
