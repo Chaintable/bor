@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"strings"
 	"sync/atomic"
@@ -103,7 +104,8 @@ type callTracer struct {
 	interrupt atomic.Bool // Atomic flag to signal execution interruption
 	reason    error       // Textual reason for the interruption
 
-	txID string
+	txID   string
+	logger log.Logger
 }
 
 type callTracerConfig struct {
@@ -115,7 +117,9 @@ func newCallTracerRaw() *callTracer {
 	t := &callTracer{callstack: make([]callFrame, 0, 1), config: callTracerConfig{
 		OnlyTopCall: false,
 		WithLog:     true,
-	}}
+	},
+		logger: log.New("tracer", "callTracer"),
+	}
 	return t
 }
 
@@ -163,6 +167,7 @@ func (t *callTracer) ToTrace(f *callFrame, traceAddress []int64) ptypes.Trace {
 }
 
 func (t *callTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+	t.logger.Info("OnOpcode")
 	if vm.OpCode(opcode) == vm.SSTORE {
 		t.callstack[len(t.callstack)-1].SelfStorageChange = true
 		t.callstack[len(t.callstack)-1].StorageChange = true
@@ -171,6 +176,7 @@ func (t *callTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope tr
 
 // OnEnter is called when EVM enters a new scope (via call, create or selfdestruct).
 func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+	t.logger.Info("OnEnter", "depth", depth)
 	t.depth = depth
 	if t.config.OnlyTopCall && depth > 0 {
 		return
@@ -195,6 +201,7 @@ func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common
 // OnExit is called when EVM exits a scope, even if the scope didn't
 // execute any code.
 func (t *callTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+	t.logger.Info("OnExit", "depth", depth)
 	if depth == 0 {
 		t.captureEnd(output, gasUsed, err, reverted)
 		return
@@ -233,16 +240,19 @@ func (t *callTracer) captureEnd(output []byte, gasUsed uint64, err error, revert
 }
 
 func (t *callTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
+	t.logger.Info("OnTxStart", "tx", tx)
 	t.gasLimit = tx.Gas()
 	t.txID = tx.Hash().Hex()
 }
 
 func (t *callTracer) OnBorTxStart(env *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
+	t.logger.Info("OnBorTxStart", "tx", tx, "txHash", txHash)
 	t.gasLimit = tx.Gas()
 	t.txID = txHash.Hex()
 }
 
 func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
+	t.logger.Info("OnTxEnd", "receipt", receipt, "err", err)
 	// Error happened during tx validation.
 	if err != nil {
 		return
@@ -258,6 +268,7 @@ func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
 }
 
 func (t *callTracer) OnLog(log *types.Log) {
+	t.logger.Info("OnLog", "log", log)
 	// Only logs need to be captured via opcode processing
 	if !t.config.WithLog {
 		return
