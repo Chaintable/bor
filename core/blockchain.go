@@ -3443,6 +3443,7 @@ func (bc *BlockChain) SubscribeChain2HeadEvent(ch chan<- Chain2HeadEvent) event.
 
 func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.StateDB, receipt *types.Receipt) (err error) {
 	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(block.Number().Uint64(), block.Hash()))
+	receipt.TxHash = txHash
 	borTx, _, _, txIndex := rawdb.ReadBorTransactionWithBlockHash(bc.db, txHash, block.Hash())
 	bytes, _ := json.Marshal(bc.GetStateSync())
 	log.Info("Append bor transaction", "number", block.Number(), "hash", block.Hash().String(), "txHash", txHash.String(), "borTx", borTx, "stateSyncData", string(bytes))

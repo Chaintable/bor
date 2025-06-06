@@ -17,6 +17,7 @@ package tracer
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -176,7 +177,7 @@ func (t *callTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope tr
 
 // OnEnter is called when EVM enters a new scope (via call, create or selfdestruct).
 func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
-	t.logger.Info("OnEnter", "depth", depth)
+	t.logger.Info("OnEnter", "depth", depth, "input", hex.EncodeToString(input))
 	t.depth = depth
 	if t.config.OnlyTopCall && depth > 0 {
 		return
