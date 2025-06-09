@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/debank/tracer"
 	"io"
 	"math/big"
 	"sort"
@@ -229,6 +231,8 @@ type Bor struct {
 	devFakeAuthor bool
 
 	closeOnce sync.Once
+
+	tracer *balance_tracing.Hooks
 }
 
 type signer struct {
@@ -245,6 +249,7 @@ func New(
 	heimdallClient IHeimdallClient,
 	genesisContracts GenesisContract,
 	devFakeAuthor bool,
+	tracer *balance_tracing.Hooks,
 ) *Bor {
 	// get bor config
 	borConfig := chainConfig.Bor
@@ -268,6 +273,7 @@ func New(
 		GenesisContractsClient: genesisContracts,
 		HeimdallClient:         heimdallClient,
 		devFakeAuthor:          devFakeAuthor,
+		tracer:                 tracer,
 	}
 
 	c.authorizedSigner.Store(&signer{
@@ -1232,6 +1238,36 @@ func (c *Bor) CommitStates(
 
 	var gasUsed uint64
 
+	var vmConfig *vm.Config
+	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(header.Number.Uint64(), header.Hash()))
+	if c.tracer != nil {
+		var totalStateSyncData = 0
+		for _, eventRecord := range eventRecords {
+			if eventRecord.ID <= lastStateID {
+				continue
+			}
+
+			if err = validateEventRecord(eventRecord, number, to, lastStateID, chainID); err != nil {
+				break
+			}
+			totalStateSyncData++
+		}
+		stateReceiverContract := common.HexToAddress(c.config.StateReceiverContract)
+		vmConfig = &vm.Config{Tracer: tracer.NewBorStateSyncTxnTracer(c.tracer, totalStateSyncData, stateReceiverContract)}
+	}
+	if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnBorTxStart != nil {
+		vmConfig.Tracer.OnBorTxStart(txHash)
+	}
+
+	defer func() {
+		if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnTxEnd != nil {
+			vmConfig.Tracer.OnTxEnd(&types.Receipt{
+				Status: types.ReceiptStatusSuccessful,
+				TxHash: txHash,
+			}, err)
+		}
+	}()
+
 	for _, eventRecord := range eventRecords {
 		if eventRecord.ID <= lastStateID {
 			continue
@@ -1254,7 +1290,7 @@ func (c *Bor) CommitStates(
 		// we expect that this call MUST emit an event, otherwise we wouldn't make a receipt
 		// if the receiver address is not a contract then we'll skip the most of the execution and emitting an event as well
 		// https://github.com/maticnetwork/genesis-contracts/blob/master/contracts/StateReceiver.sol#L27
-		gasUsed, err = c.GenesisContractsClient.CommitState(eventRecord, state, header, chain)
+		gasUsed, err = c.GenesisContractsClient.CommitState(eventRecord, state, header, chain, vmConfig)
 		if err != nil {
 			return nil, err
 		}

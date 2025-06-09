@@ -2,6 +2,7 @@ package contract
 
 import (
 	"context"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"math"
 	"math/big"
 	"strings"
@@ -69,6 +70,7 @@ func (gc *GenesisContractsClient) CommitState(
 	state *state.StateDB,
 	header *types.Header,
 	chCtx statefull.ChainContext,
+	vmConfig *vm.Config,
 ) (uint64, error) {
 	eventRecord := event.BuildEventRecord()
 
@@ -91,7 +93,7 @@ func (gc *GenesisContractsClient) CommitState(
 
 	log.Info("→ committing new state", "eventRecord", event.ID)
 
-	gasUsed, err := statefull.ApplyMessage(context.Background(), msg, state, header, gc.chainConfig, chCtx)
+	gasUsed, err := statefull.ApplyMessage(context.Background(), msg, state, header, gc.chainConfig, chCtx, vmConfig)
 
 	// Logging event log with time and individual gasUsed
 	log.Info("→ committed new state", "eventRecord", event.String(gasUsed))

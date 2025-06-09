@@ -77,10 +77,10 @@ func (t *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Tran
 	}
 }
 
-func (t *borStateSyncTxnTracer) OnBorTxStart(env *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
+func (t *borStateSyncTxnTracer) OnBorTxStart(txHash common.Hash) {
 	t.logger.Info("OnBorTxStart", "txHash", txHash.Hex(), "remainingEvents", t.remainingEvents, "totalEvents", t.totalEvents)
 	if t.remainingEvents == t.totalEvents && t.tracer.OnBorTxStart != nil {
-		t.tracer.OnBorTxStart(env, tx, txHash, from)
+		t.tracer.OnBorTxStart(txHash)
 	}
 }
 

@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"strings"
 	"sync/atomic"
@@ -29,11 +28,13 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	ptypes "github.com/ethereum/go-ethereum/debank/types"
 	"github.com/ethereum/go-ethereum/debank/util"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 type callFrame struct {
@@ -249,9 +250,9 @@ func (t *callTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, fr
 	t.txID = tx.Hash().Hex()
 }
 
-func (t *callTracer) OnBorTxStart(env *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
-	t.logger.Info("OnBorTxStart", "tx", tx, "txHash", txHash)
-	t.gasLimit = tx.Gas()
+func (t *callTracer) OnBorTxStart(txHash common.Hash) {
+	t.logger.Info("OnBorTxStart", "txHash", txHash)
+	t.gasLimit = math.MaxUint64 / 2
 	t.txID = txHash.Hex()
 }
 

@@ -18,7 +18,10 @@
 package ethconfig
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"math/big"
 	"time"
 
@@ -34,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -226,11 +230,25 @@ func CreateConsensusEngine(chainConfig *params.ChainConfig, ethConfig *Config, d
 		// If Matic bor consensus is requested, set it up
 		// In order to pass the ethereum transaction tests, we need to set the burn contract which is in the bor config
 		// Then, bor != nil will also be enabled for ethash and clique. Only enable Bor for real if there is a validator contract present.
+		var tracer *tracing.Hooks
+		var err error
+		if ethConfig.VMTrace != "" {
+			var traceConfig json.RawMessage
+			if ethConfig.VMTraceJsonConfig != "" {
+				traceConfig = json.RawMessage(ethConfig.VMTraceJsonConfig)
+			}
+			tracer, err = tracers.LiveDirectory.New(ethConfig.VMTrace, traceConfig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create tracer %s: %v", ethConfig.VMTrace, err)
+			}
+			log.Info("Bor tracing enabled", "tracer", ethConfig.VMTrace, "config", ethConfig.VMTraceJsonConfig)
+		}
+
 		genesisContractsClient := contract.NewGenesisContractsClient(chainConfig, chainConfig.Bor.ValidatorContract, chainConfig.Bor.StateReceiverContract, blockchainAPI)
 		spanner := span.NewChainSpanner(blockchainAPI, contract.ValidatorSet(), chainConfig, common.HexToAddress(chainConfig.Bor.ValidatorContract))
 
 		if ethConfig.WithoutHeimdall {
-			return bor.New(chainConfig, db, blockchainAPI, spanner, nil, genesisContractsClient, ethConfig.DevFakeAuthor), nil
+			return bor.New(chainConfig, db, blockchainAPI, spanner, nil, genesisContractsClient, ethConfig.DevFakeAuthor, tracer), nil
 		} else {
 			if ethConfig.DevFakeAuthor {
 				log.Warn("Sanitizing DevFakeAuthor", "Use DevFakeAuthor with", "--bor.withoutheimdall")
@@ -245,7 +263,7 @@ func CreateConsensusEngine(chainConfig *params.ChainConfig, ethConfig *Config, d
 				heimdallClient = heimdall.NewHeimdallClient(ethConfig.HeimdallURL)
 			}
 
-			return bor.New(chainConfig, db, blockchainAPI, spanner, heimdallClient, genesisContractsClient, false), nil
+			return bor.New(chainConfig, db, blockchainAPI, spanner, heimdallClient, genesisContractsClient, false, tracer), nil
 		}
 	}
 	// If defaulting to proof-of-work, enforce an already merged network since

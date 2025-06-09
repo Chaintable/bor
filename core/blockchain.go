@@ -1872,16 +1872,16 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
-	if len(blockLogs) > 0 {
-		if len(blockLogs) > len(logs) {
-			if err := bc.appendBorTransaction(block, statedb, &types.Receipt{
-				Status: types.ReceiptStatusSuccessful,
-				Logs:   stateSyncLogs,
-			}); err != nil {
-				log.Crit("append bor transaction", "error", err)
-			}
-		}
-	}
+	//if len(blockLogs) > 0 {
+	//	if len(blockLogs) > len(logs) {
+	//		if err := bc.appendBorTransaction(block, statedb, &types.Receipt{
+	//			Status: types.ReceiptStatusSuccessful,
+	//			Logs:   stateSyncLogs,
+	//		}); err != nil {
+	//			log.Crit("append bor transaction", "error", err)
+	//		}
+	//	}
+	//}
 	// Commit all cached state changes into underlying memory database.
 	root, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()))
 	if err != nil {
@@ -3466,7 +3466,7 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 		)
 
 		if vmenv.Config.Tracer != nil && vmenv.Config.Tracer.OnBorTxStart != nil {
-			vmenv.Config.Tracer.OnBorTxStart(vmenv.GetVMContext(), borTx, txHash, message.From)
+			vmenv.Config.Tracer.OnBorTxStart(txHash)
 		}
 		defer func() {
 			if vmenv.Config.Tracer != nil && vmenv.Config.Tracer.OnTxEnd != nil {
@@ -3535,7 +3535,7 @@ func applyBorMessage(evm *vm.EVM, msg Message) (*ExecutionResult, error) {
 // statefull.ApplyBorMessage
 func applyBorMessageWithHook(msg Message, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, txHash common.Hash, tx *types.Transaction, evm *vm.EVM) (receipt *types.Receipt, err error) {
 	if evm.Config.Tracer != nil && evm.Config.Tracer.OnBorTxStart != nil {
-		evm.Config.Tracer.OnBorTxStart(evm.GetVMContext(), tx, txHash, msg.From)
+		evm.Config.Tracer.OnBorTxStart(txHash)
 		if evm.Config.Tracer.OnTxEnd != nil {
 			defer func() {
 				receipt.SetEffectiveGasPrice(tx, evm.Context.BaseFee)

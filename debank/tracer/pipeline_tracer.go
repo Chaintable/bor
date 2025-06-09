@@ -114,12 +114,12 @@ func (t *PipelineTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transaction,
 	BlockCtx.TxStartTime = time.Now()
 }
 
-func (t *PipelineTracer) OnBorTxStart(vm *tracing.VMContext, tx *types.Transaction, txHash common.Hash, from common.Address) {
+func (t *PipelineTracer) OnBorTxStart(txHash common.Hash) {
 	callTracer := newCallTracerRaw()
 	t.callTracer = callTracer
-	t.callTracer.OnBorTxStart(vm, tx, txHash, from)
-	BlockCtx.Tx = tx
-	BlockCtx.From = from
+	t.callTracer.OnBorTxStart(txHash)
+	BlockCtx.Tx = types.NewBorTransaction()
+	BlockCtx.From = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 	BlockCtx.TxStartTime = time.Now()
 }
 
