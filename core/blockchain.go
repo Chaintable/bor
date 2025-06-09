@@ -3508,6 +3508,7 @@ func applyBorMessage(evm *vm.EVM, msg Message) (*ExecutionResult, error) {
 	)
 	// Update the state with pending changes
 	if err != nil {
+		log.Error("applyBorMessage", "error", err.Error())
 		evm.StateDB.Finalise(true)
 	}
 
