@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -3472,15 +3473,25 @@ func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.St
 				vmenv.Config.Tracer.OnTxEnd(receipt, err)
 			}
 		}()
+		var systemAddress = common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE")
+		var getSystemMessage = func(toAddress common.Address, data []byte) Message {
+			return Message{
+				From:     systemAddress,
+				GasLimit: math.MaxUint64 / 2,
+				GasPrice: big.NewInt(0),
+				Value:    big.NewInt(0),
+				To:       &toAddress,
+				Data:     data,
+			}
+		}
 		for _, data := range stateSyncData {
 			tData, err := hex.DecodeString(data.Data)
 			if err != nil {
 				log.Error("Failed to decode transaction", "err", err)
 				return err
 			}
-			tx := types.NewTransaction(0, stateReceiverContract, big.NewInt(0), 30_000_000, big.NewInt(0), tData)
-			msg, _ := TransactionToMessage(tx, signer, block.BaseFee())
-			result, err := applyBorMessage(vmenv, *msg)
+			msg := getSystemMessage(stateReceiverContract, tData)
+			result, err := applyBorMessage(vmenv, msg)
 			if err != nil {
 				return err
 			}
