@@ -1238,35 +1238,38 @@ func (c *Bor) CommitStates(
 
 	var gasUsed uint64
 
+	var totalStateSyncData = 0
+	for _, eventRecord := range eventRecords {
+		if eventRecord.ID <= lastStateID {
+			continue
+		}
+
+		if err = validateEventRecord(eventRecord, number, to, lastStateID, chainID); err != nil {
+			break
+		}
+		totalStateSyncData++
+	}
+
 	var vmConfig *vm.Config
 	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(header.Number.Uint64(), header.Hash()))
 	if c.tracer != nil {
-		var totalStateSyncData = 0
-		for _, eventRecord := range eventRecords {
-			if eventRecord.ID <= lastStateID {
-				continue
-			}
-
-			if err = validateEventRecord(eventRecord, number, to, lastStateID, chainID); err != nil {
-				break
-			}
-			totalStateSyncData++
-		}
 		stateReceiverContract := common.HexToAddress(c.config.StateReceiverContract)
 		vmConfig = &vm.Config{Tracer: tracer.NewBorStateSyncTxnTracer(c.tracer, totalStateSyncData, stateReceiverContract)}
 	}
-	if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnBorTxStart != nil {
-		vmConfig.Tracer.OnBorTxStart(txHash)
-	}
-
-	defer func() {
-		if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnTxEnd != nil {
-			vmConfig.Tracer.OnTxEnd(&types.Receipt{
-				Status: types.ReceiptStatusSuccessful,
-				TxHash: txHash,
-			}, err)
+	if totalStateSyncData > 0 {
+		if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnBorTxStart != nil {
+			vmConfig.Tracer.OnBorTxStart(txHash)
 		}
-	}()
+
+		defer func() {
+			if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnTxEnd != nil {
+				vmConfig.Tracer.OnTxEnd(&types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+					TxHash: txHash,
+				}, err)
+			}
+		}()
+	}
 
 	for _, eventRecord := range eventRecords {
 		if eventRecord.ID <= lastStateID {
