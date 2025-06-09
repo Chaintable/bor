@@ -17,7 +17,6 @@
 package tracer
 
 import (
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -38,7 +37,6 @@ func NewBorStateSyncTxnTracer(
 		remainingEvents: stateSyncEventsCount,
 		totalEvents:     stateSyncEventsCount,
 		stateReceiver:   stateReceiverContract,
-		logger:          log.New("tracer", "borStateSyncTxnTracer"),
 	}
 
 	return &tracing.Hooks{
@@ -65,12 +63,10 @@ type borStateSyncTxnTracer struct {
 	totalEvents     int
 	stateReceiver   common.Address
 	reason          error
-	logger          log.Logger
 	depth           int
 }
 
 func (t *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
-	t.logger.Info("OnTxStart")
 	if t.remainingEvents == t.totalEvents && t.tracer.OnTxStart != nil {
 		// 触发虚拟交易开始
 		t.tracer.OnTxStart(env, tx, from)
@@ -78,21 +74,18 @@ func (t *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Tran
 }
 
 func (t *borStateSyncTxnTracer) OnBorTxStart(txHash common.Hash) {
-	t.logger.Info("OnBorTxStart", "txHash", txHash.Hex(), "remainingEvents", t.remainingEvents, "totalEvents", t.totalEvents)
 	if t.remainingEvents == t.totalEvents && t.tracer.OnBorTxStart != nil {
 		t.tracer.OnBorTxStart(txHash)
 	}
 }
 
 func (t *borStateSyncTxnTracer) OnTxEnd(receipt *types.Receipt, err error) {
-	t.logger.Info("OnTxEnd", "remainingEvents", t.remainingEvents, "totalEvents", t.totalEvents)
 	if t.remainingEvents == 0 && t.tracer.OnTxEnd != nil {
 		t.tracer.OnTxEnd(receipt, err)
 	}
 }
 
 func (t *borStateSyncTxnTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
-	t.logger.Info("OnEnter", "depth", depth, "remainingEvents", t.remainingEvents)
 	if t.tracer.OnEnter != nil {
 		if t.depth == 0 {
 			t.tracer.OnEnter(0, byte(vm.CALL), systemAddress, t.stateReceiver, nil, 0, big.NewInt(0))
@@ -103,7 +96,6 @@ func (t *borStateSyncTxnTracer) OnEnter(depth int, typ byte, from common.Address
 }
 
 func (t *borStateSyncTxnTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
-	t.logger.Info("OnExit", "depth", depth, "remainingEvents", t.remainingEvents, "totalEvents", t.totalEvents)
 	if t.remainingEvents <= 0 {
 		panic("unexpected extra exit event")
 	}
@@ -130,7 +122,6 @@ func (t *borStateSyncTxnTracer) OnExit(depth int, output []byte, gasUsed uint64,
 }
 
 func (t *borStateSyncTxnTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
-	t.logger.Info("OnOpcode")
 	if t.tracer.OnOpcode != nil {
 		// trick tracer to think it is 1 level deeper
 		t.tracer.OnOpcode(pc, op, gas, cost, scope, rData, t.depth, err)
@@ -138,7 +129,6 @@ func (t *borStateSyncTxnTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, s
 }
 
 func (t *borStateSyncTxnTracer) OnFault(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, depth int, err error) {
-	t.logger.Info("OnFault")
 	if t.tracer.OnFault != nil {
 		// trick tracer to think it is 1 level deeper
 		t.tracer.OnFault(pc, op, gas, cost, scope, t.depth, err)
@@ -195,7 +185,6 @@ func (t *borStateSyncTxnTracer) OnStorageChange(a common.Address, k common.Hash,
 }
 
 func (t *borStateSyncTxnTracer) OnLog(log *types.Log) {
-	t.logger.Info("OnLog", "log", log)
 	if t.tracer.OnLog != nil {
 		t.tracer.OnLog(log)
 	}

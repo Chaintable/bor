@@ -20,12 +20,9 @@ package core
 import (
 	"compress/gzip"
 	"context"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -52,7 +49,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader/whitelist"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -65,7 +61,6 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
-	"github.com/holiman/uint256"
 )
 
 var (
@@ -1872,16 +1867,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
-	//if len(blockLogs) > 0 {
-	//	if len(blockLogs) > len(logs) {
-	//		if err := bc.appendBorTransaction(block, statedb, &types.Receipt{
-	//			Status: types.ReceiptStatusSuccessful,
-	//			Logs:   stateSyncLogs,
-	//		}); err != nil {
-	//			log.Crit("append bor transaction", "error", err)
-	//		}
-	//	}
-	//}
+
 	// Commit all cached state changes into underlying memory database.
 	root, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()))
 	if err != nil {
@@ -3440,160 +3426,4 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 
 func (bc *BlockChain) SubscribeChain2HeadEvent(ch chan<- Chain2HeadEvent) event.Subscription {
 	return bc.scope.Track(bc.chain2HeadFeed.Subscribe(ch))
-}
-
-func (bc *BlockChain) appendBorTransaction(block *types.Block, statedb *state.StateDB, receipt *types.Receipt) (err error) {
-	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(block.Number().Uint64(), block.Hash()))
-	receipt.TxHash = txHash
-	borTx, _, _, txIndex := rawdb.ReadBorTransactionWithBlockHash(bc.db, txHash, block.Hash())
-	bytes, _ := json.Marshal(bc.GetStateSync())
-	log.Info("Append bor transaction", "number", block.Number(), "hash", block.Hash().String(), "txHash", txHash.String(), "borTx", borTx, "stateSyncData", string(bytes))
-	if borTx != nil {
-		var (
-			statedbCopy = statedb.Copy()
-			blockCtx    = NewEVMBlockContext(block.Header(), bc, nil)
-			signer      = types.MakeSigner(bc.Config(), block.Number(), block.Time())
-		)
-		statedbCopy.SetTxContext(txHash, int(txIndex))
-		statedbCopy.SetLogger(bc.logger)
-
-		var (
-			message, _            = TransactionToMessage(borTx, signer, block.BaseFee())
-			txContext             = NewEVMTxContext(message)
-			stateReceiverContract = common.HexToAddress(bc.chainConfig.Bor.StateReceiverContract)
-			stateSyncData         = bc.GetStateSync()
-			vmenv                 = vm.NewEVM(blockCtx, txContext, statedbCopy, bc.Config(), vm.Config{Tracer: tracer.NewBorStateSyncTxnTracer(bc.vmConfig.Tracer, len(stateSyncData), stateReceiverContract), NoBaseFee: true})
-		)
-
-		if vmenv.Config.Tracer != nil && vmenv.Config.Tracer.OnBorTxStart != nil {
-			vmenv.Config.Tracer.OnBorTxStart(txHash)
-		}
-		defer func() {
-			if vmenv.Config.Tracer != nil && vmenv.Config.Tracer.OnTxEnd != nil {
-				vmenv.Config.Tracer.OnTxEnd(receipt, err)
-			}
-		}()
-		var systemAddress = common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE")
-		var getSystemMessage = func(toAddress common.Address, data []byte) Message {
-			return Message{
-				From:     systemAddress,
-				GasLimit: math.MaxUint64 / 2,
-				GasPrice: big.NewInt(0),
-				Value:    big.NewInt(0),
-				To:       &toAddress,
-				Data:     data,
-			}
-		}
-		for _, data := range stateSyncData {
-			tData, err := hex.DecodeString(data.Data)
-			if err != nil {
-				log.Error("Failed to decode transaction", "err", err)
-				return err
-			}
-			msg := getSystemMessage(stateReceiverContract, tData)
-			result, err := applyBorMessage(vmenv, msg)
-			if err != nil {
-				return err
-			}
-			{
-				res, _ := json.Marshal(result)
-				log.Info("apply bor message", "result", string(res))
-			}
-		}
-
-	}
-	return nil
-}
-
-func applyBorMessage(evm *vm.EVM, msg Message) (*ExecutionResult, error) {
-	initialGas := msg.GasLimit
-
-	// Apply the transaction to the current state (included in the env)
-	ret, gasLeft, err := evm.Call(
-		vm.AccountRef(msg.From),
-		*msg.To,
-		msg.Data,
-		msg.GasLimit,
-		uint256.NewInt(msg.Value.Uint64()),
-		nil,
-	)
-	// Update the state with pending changes
-	if err != nil {
-		log.Error("applyBorMessage", "error", err.Error())
-		evm.StateDB.Finalise(true)
-	}
-
-	gasUsed := initialGas - gasLeft
-
-	return &ExecutionResult{
-		UsedGas:    gasUsed,
-		Err:        err,
-		ReturnData: ret,
-	}, nil
-}
-
-// statefull.ApplyBorMessage
-func applyBorMessageWithHook(msg Message, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, txHash common.Hash, tx *types.Transaction, evm *vm.EVM) (receipt *types.Receipt, err error) {
-	if evm.Config.Tracer != nil && evm.Config.Tracer.OnBorTxStart != nil {
-		evm.Config.Tracer.OnBorTxStart(txHash)
-		if evm.Config.Tracer.OnTxEnd != nil {
-			defer func() {
-				receipt.SetEffectiveGasPrice(tx, evm.Context.BaseFee)
-				evm.Config.Tracer.OnTxEnd(receipt, err)
-			}()
-		}
-	}
-	initialGas := msg.GasLimit
-
-	// Apply the transaction to the current state (included in the env)
-	ret, gasLeft, err := evm.Call(
-		vm.AccountRef(msg.From),
-		*msg.To,
-		msg.Data,
-		msg.GasLimit,
-		uint256.NewInt(msg.Value.Uint64()),
-		nil,
-	)
-	// Update the state with pending changes
-	if err != nil {
-		evm.StateDB.Finalise(true)
-	}
-
-	gasUsed := initialGas - gasLeft
-	result := &ExecutionResult{
-		UsedGas:    gasUsed,
-		Err:        err,
-		ReturnData: ret,
-	}
-
-	// Create a new receipt for the transaction, storing the intermediate root and gas used
-	// by the tx.
-	receipt = &types.Receipt{Type: tx.Type()}
-	if result.Failed() {
-		receipt.Status = types.ReceiptStatusFailed
-	} else {
-		receipt.Status = types.ReceiptStatusSuccessful
-	}
-
-	receipt.TxHash = txHash
-	receipt.GasUsed = result.UsedGas
-
-	if tx.Type() == types.BlobTxType {
-		receipt.BlobGasUsed = uint64(len(tx.BlobHashes()) * params.BlobTxBlobGasPerBlob)
-		receipt.BlobGasPrice = evm.Context.BlobBaseFee
-	}
-
-	// If the transaction created a contract, store the creation address in the receipt.
-	if msg.To == nil {
-		receipt.ContractAddress = crypto.CreateAddress(evm.TxContext.Origin, tx.Nonce())
-	}
-
-	// Set the receipt logs and create the bloom filter.
-	receipt.Logs = statedb.GetLogs(tx.Hash(), blockNumber.Uint64(), blockHash)
-	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
-	receipt.BlockHash = blockHash
-	receipt.BlockNumber = blockNumber
-	receipt.TransactionIndex = uint(statedb.TxIndex())
-
-	return receipt, nil
 }
