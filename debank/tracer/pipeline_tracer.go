@@ -115,6 +115,7 @@ func (t *PipelineTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transaction,
 }
 
 func (t *PipelineTracer) OnBorTxStart(txHash common.Hash) {
+	log.Info("OnBorTxStart", "tracer", "pipelineTracer", "tx hash", txHash.Hex())
 	callTracer := newCallTracerRaw()
 	t.callTracer = callTracer
 	t.callTracer.OnBorTxStart(txHash)
@@ -124,6 +125,7 @@ func (t *PipelineTracer) OnBorTxStart(txHash common.Hash) {
 }
 
 func (t *PipelineTracer) OnTxEnd(receipt *types.Receipt, err error) {
+	log.Info("OnTxEnd", "tracer", "pipelineTracer", "tx hash", receipt.TxHash.Hex())
 	defer func() {
 		metrics.BlockTxExecutionTimer.UpdateSince(BlockCtx.TxStartTime)
 	}()

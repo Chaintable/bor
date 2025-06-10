@@ -75,12 +75,14 @@ func (t *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Tran
 }
 
 func (t *borStateSyncTxnTracer) OnBorTxStart(txHash common.Hash) {
+	log.Info("OnBorTxStart", "tracer", "borStateSyncTxnTracer", "tx hash", txHash.Hex())
 	if t.remainingEvents == t.totalEvents && t.tracer.OnBorTxStart != nil {
 		t.tracer.OnBorTxStart(txHash)
 	}
 }
 
 func (t *borStateSyncTxnTracer) OnTxEnd(receipt *types.Receipt, err error) {
+	log.Info("OnTxEnd", "tracer", "borStateSyncTxnTracer", "tx hash", receipt.TxHash.Hex())
 	if t.remainingEvents == 0 && t.tracer.OnTxEnd != nil {
 		t.tracer.OnTxEnd(receipt, err)
 	}
