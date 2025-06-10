@@ -18,10 +18,7 @@
 package ethconfig
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
-	"github.com/ethereum/go-ethereum/eth/tracers"
 	"math/big"
 	"time"
 
@@ -222,7 +219,7 @@ type Config struct {
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain configuration.
-func CreateConsensusEngine(chainConfig *params.ChainConfig, ethConfig *Config, db ethdb.Database, blockchainAPI *ethapi.BlockChainAPI) (consensus.Engine, error) {
+func CreateConsensusEngine(chainConfig *params.ChainConfig, ethConfig *Config, db ethdb.Database, blockchainAPI *ethapi.BlockChainAPI, tracer *tracing.Hooks) (consensus.Engine, error) {
 	// nolint:nestif
 	if chainConfig.Clique != nil {
 		return beacon.New(clique.New(chainConfig.Clique, db)), nil
@@ -230,20 +227,6 @@ func CreateConsensusEngine(chainConfig *params.ChainConfig, ethConfig *Config, d
 		// If Matic bor consensus is requested, set it up
 		// In order to pass the ethereum transaction tests, we need to set the burn contract which is in the bor config
 		// Then, bor != nil will also be enabled for ethash and clique. Only enable Bor for real if there is a validator contract present.
-		var tracer *tracing.Hooks
-		var err error
-		if ethConfig.VMTrace != "" {
-			var traceConfig json.RawMessage
-			if ethConfig.VMTraceJsonConfig != "" {
-				traceConfig = json.RawMessage(ethConfig.VMTraceJsonConfig)
-			}
-			tracer, err = tracers.LiveDirectory.New(ethConfig.VMTrace, traceConfig)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create tracer %s: %v", ethConfig.VMTrace, err)
-			}
-			log.Info("Bor tracing enabled", "tracer", ethConfig.VMTrace, "config", ethConfig.VMTraceJsonConfig)
-		}
-
 		genesisContractsClient := contract.NewGenesisContractsClient(chainConfig, chainConfig.Bor.ValidatorContract, chainConfig.Bor.StateReceiverContract, blockchainAPI)
 		spanner := span.NewChainSpanner(blockchainAPI, contract.ValidatorSet(), chainConfig, common.HexToAddress(chainConfig.Bor.ValidatorContract))
 
