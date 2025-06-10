@@ -227,9 +227,6 @@ func (t *callTracer) OnExit(depth int, output []byte, gasUsed uint64, err error,
 	call.processOutput(output, err, reverted)
 	// Nest call into parent.
 	// 忽略失败的调用
-	if call.failed() {
-		log.Info("OnExit", "call error", call.Error)
-	}
 	if !call.failed() {
 		call.PosInParentTrace = len(t.callstack[size-1].Calls) + len(t.callstack[size-1].Logs)
 		t.callstack[size-1].Calls = append(t.callstack[size-1].Calls, call)
@@ -270,7 +267,7 @@ func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
 }
 
 func (t *callTracer) OnLog(log *types.Log) {
-	elog.Info("OnLog", "tracer", "borStateSyncTxnTracer", "log", log)
+	elog.Info("OnLog", "tracer", "callTracer", "log", log)
 	if len(t.callstack) == 0 {
 		t.PendingLogs = append(t.PendingLogs, log)
 		return
