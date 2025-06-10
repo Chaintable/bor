@@ -155,11 +155,12 @@ func (t *PipelineTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tr
 	t.callTracer.OnOpcode(pc, op, gas, cost, scope, rData, depth, err)
 }
 
-func (t *PipelineTracer) OnLog(log *types.Log) {
+func (t *PipelineTracer) OnLog(llog *types.Log) {
+	log.Info("OnLog", "tracer", "pipelineTracer", "log", llog)
 	if t.callTracer == nil {
 		return
 	}
-	t.callTracer.OnLog(log)
+	t.callTracer.OnLog(llog)
 }
 
 func (t *PipelineTracer) OnGenesisBlock(block *types.Block, alloc types.GenesisAlloc) {
