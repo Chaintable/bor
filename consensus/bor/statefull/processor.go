@@ -69,6 +69,7 @@ func ApplyMessage(
 	header *types.Header,
 	chainConfig *params.ChainConfig,
 	chainContext core.ChainContext,
+	vmConfig *vm.Config,
 ) (uint64, error) {
 	initialGas := msg.Gas()
 
@@ -77,7 +78,11 @@ func ApplyMessage(
 
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
-	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, state, chainConfig, vm.Config{})
+	var config = vm.Config{}
+	if vmConfig != nil {
+		config = *vmConfig
+	}
+	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, state, chainConfig, config)
 
 	// nolint : contextcheck
 	// Apply the transaction to the current state (included in the env)
