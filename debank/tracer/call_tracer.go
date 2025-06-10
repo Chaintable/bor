@@ -33,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	ptypes "github.com/ethereum/go-ethereum/debank/types"
 	"github.com/ethereum/go-ethereum/debank/util"
-	elog "github.com/ethereum/go-ethereum/log"
 )
 
 type callFrame struct {
