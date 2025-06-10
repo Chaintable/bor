@@ -397,6 +397,10 @@ func (c *Bor) verifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 		return consensus.ErrUnexpectedWithdrawals
 	}
 
+	if header.RequestsHash != nil {
+		return consensus.ErrUnexpectedRequests
+	}
+
 	// All basic checks passed, verify cascading fields
 	return c.verifyCascadingFields(chain, header, parents)
 }
@@ -826,6 +830,9 @@ func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, 
 	if body.Withdrawals != nil || header.WithdrawalsHash != nil {
 		return
 	}
+	if body.Requests != nil || header.RequestsHash != nil {
+		return
+	}
 
 	var (
 		stateSyncData []*types.StateSyncData
@@ -911,6 +918,9 @@ func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *typ
 	headerNumber := header.Number.Uint64()
 	if body.Withdrawals != nil || header.WithdrawalsHash != nil {
 		return nil, consensus.ErrUnexpectedWithdrawals
+	}
+	if body.Requests != nil || header.RequestsHash != nil {
+		return nil, consensus.ErrUnexpectedRequests
 	}
 
 	var (
