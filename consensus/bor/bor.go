@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/debank/tracer"
 	"io"
 	"math/big"
 	"sort"
@@ -17,6 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/debank/tracer"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"

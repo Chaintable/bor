@@ -1,7 +1,6 @@
 package bor
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -9,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/bor/statefull"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 )
 
 //go:generate mockgen -destination=./genesis_contract_mock.go -package=bor . GenesisContract
