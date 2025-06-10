@@ -556,16 +556,17 @@ func (s *StateDB) Error() error {
 	return s.dbErr
 }
 
-func (s *StateDB) AddLog(log *types.Log) {
+func (s *StateDB) AddLog(llog *types.Log) {
 	s.journal.append(addLogChange{txhash: s.thash})
 
-	log.TxHash = s.thash
-	log.TxIndex = uint(s.txIndex)
-	log.Index = s.logSize
+	llog.TxHash = s.thash
+	llog.TxIndex = uint(s.txIndex)
+	llog.Index = s.logSize
 	if s.logger != nil && s.logger.OnLog != nil {
-		s.logger.OnLog(log)
+		log.Info("AddLog", "log", llog)
+		s.logger.OnLog(llog)
 	}
-	s.logs[s.thash] = append(s.logs[s.thash], log)
+	s.logs[s.thash] = append(s.logs[s.thash], llog)
 	s.logSize++
 }
 
