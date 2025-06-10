@@ -247,13 +247,11 @@ func (t *callTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, fr
 }
 
 func (t *callTracer) OnBorTxStart(txHash common.Hash) {
-	elog.Info("OnBorTxStart", "tracer", "callTracer", "tx hash", txHash.Hex())
 	t.gasLimit = math.MaxUint64 / 2
 	t.txID = txHash.Hex()
 }
 
 func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
-	elog.Info("OnTxEnd", "tracer", "callTracer", "tx hash", receipt.TxHash.Hex())
 	// Error happened during tx validation.
 	if err != nil {
 		return
@@ -269,7 +267,6 @@ func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
 }
 
 func (t *callTracer) OnLog(log *types.Log) {
-	elog.Info("OnLog", "tracer", "callTracer", "log", log)
 	if len(t.callstack) == 0 {
 		t.PendingLogs = append(t.PendingLogs, log)
 		return

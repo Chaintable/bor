@@ -498,10 +498,6 @@ func (s *StateDB) SetLogger(l *tracing.Hooks) {
 	s.logger = l
 }
 
-func (s *StateDB) GetLogger() *tracing.Hooks {
-	return s.logger
-}
-
 // StartPrefetcher initializes a new trie prefetcher to pull in nodes from the
 // state trie concurrently while the state is mutated so that when we reach the
 // commit phase, most of the needed data is already hot.
@@ -556,17 +552,16 @@ func (s *StateDB) Error() error {
 	return s.dbErr
 }
 
-func (s *StateDB) AddLog(llog *types.Log) {
+func (s *StateDB) AddLog(log *types.Log) {
 	s.journal.append(addLogChange{txhash: s.thash})
 
-	llog.TxHash = s.thash
-	llog.TxIndex = uint(s.txIndex)
-	llog.Index = s.logSize
+	log.TxHash = s.thash
+	log.TxIndex = uint(s.txIndex)
+	log.Index = s.logSize
 	if s.logger != nil && s.logger.OnLog != nil {
-		log.Info("AddLog", "log", llog)
-		s.logger.OnLog(llog)
+		s.logger.OnLog(log)
 	}
-	s.logs[s.thash] = append(s.logs[s.thash], llog)
+	s.logs[s.thash] = append(s.logs[s.thash], log)
 	s.logSize++
 }
 

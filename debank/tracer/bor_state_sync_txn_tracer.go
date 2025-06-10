@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 var systemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
@@ -75,14 +74,12 @@ func (t *borStateSyncTxnTracer) OnTxStart(env *tracing.VMContext, tx *types.Tran
 }
 
 func (t *borStateSyncTxnTracer) OnBorTxStart(txHash common.Hash) {
-	log.Info("OnBorTxStart", "tracer", "borStateSyncTxnTracer", "tx hash", txHash.Hex())
 	if t.remainingEvents == t.totalEvents && t.tracer.OnBorTxStart != nil {
 		t.tracer.OnBorTxStart(txHash)
 	}
 }
 
 func (t *borStateSyncTxnTracer) OnTxEnd(receipt *types.Receipt, err error) {
-	log.Info("OnTxEnd", "tracer", "borStateSyncTxnTracer", "tx hash", receipt.TxHash.Hex())
 	if t.remainingEvents == 0 && t.tracer.OnTxEnd != nil {
 		t.tracer.OnTxEnd(receipt, err)
 	}
@@ -187,10 +184,9 @@ func (t *borStateSyncTxnTracer) OnStorageChange(a common.Address, k common.Hash,
 	}
 }
 
-func (t *borStateSyncTxnTracer) OnLog(llog *types.Log) {
-	log.Info("OnLog", "tracer", "borStateSyncTxnTracer", "log", llog)
+func (t *borStateSyncTxnTracer) OnLog(log *types.Log) {
 	if t.tracer.OnLog != nil {
-		t.tracer.OnLog(llog)
+		t.tracer.OnLog(log)
 	}
 }
 

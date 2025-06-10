@@ -115,7 +115,6 @@ func (t *PipelineTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transaction,
 }
 
 func (t *PipelineTracer) OnBorTxStart(txHash common.Hash) {
-	log.Info("OnBorTxStart", "tracer", "pipelineTracer", "tx hash", txHash.Hex())
 	callTracer := newCallTracerRaw()
 	t.callTracer = callTracer
 	t.callTracer.OnBorTxStart(txHash)
@@ -125,7 +124,6 @@ func (t *PipelineTracer) OnBorTxStart(txHash common.Hash) {
 }
 
 func (t *PipelineTracer) OnTxEnd(receipt *types.Receipt, err error) {
-	log.Info("OnTxEnd", "tracer", "pipelineTracer", "tx hash", receipt.TxHash.Hex())
 	defer func() {
 		metrics.BlockTxExecutionTimer.UpdateSince(BlockCtx.TxStartTime)
 	}()
@@ -157,12 +155,11 @@ func (t *PipelineTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tr
 	t.callTracer.OnOpcode(pc, op, gas, cost, scope, rData, depth, err)
 }
 
-func (t *PipelineTracer) OnLog(llog *types.Log) {
-	log.Info("OnLog", "tracer", "pipelineTracer", "log", llog)
+func (t *PipelineTracer) OnLog(log *types.Log) {
 	if t.callTracer == nil {
 		return
 	}
-	t.callTracer.OnLog(llog)
+	t.callTracer.OnLog(log)
 }
 
 func (t *PipelineTracer) OnGenesisBlock(block *types.Block, alloc types.GenesisAlloc) {

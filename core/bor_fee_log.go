@@ -1,8 +1,6 @@
 package core
 
 import (
-	state2 "github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -108,9 +106,6 @@ func addTransferLog(
 		data = append(data, common.LeftPadBytes(v.Bytes(), 32)...)
 	}
 
-	if s, ok := state.(*state2.StateDB); ok {
-		log.Info("addTransferLog", "logger", s.GetLogger())
-	}
 	// add transfer log
 	state.AddLog(&types.Log{
 		Address: feeAddress,
