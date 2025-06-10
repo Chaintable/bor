@@ -105,7 +105,8 @@ type callTracer struct {
 	interrupt atomic.Bool // Atomic flag to signal execution interruption
 	reason    error       // Textual reason for the interruption
 
-	txID string
+	txID        string
+	PendingLogs []*types.Log
 }
 
 type callTracerConfig struct {
@@ -192,6 +193,12 @@ func (t *callTracer) OnEnter(depth int, typ byte, from common.Address, to common
 		Value: value,
 	}
 	t.callstack = append(t.callstack, call)
+	if len(t.PendingLogs) > 0 {
+		for _, logg := range t.PendingLogs {
+			t.OnLog(logg)
+		}
+		t.PendingLogs = nil
+	}
 }
 
 // OnExit is called when EVM exits a scope, even if the scope didn't
@@ -263,6 +270,10 @@ func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
 }
 
 func (t *callTracer) OnLog(log *types.Log) {
+	if len(t.callstack) == 0 {
+		t.PendingLogs = append(t.PendingLogs, log)
+		return
+	}
 	// Only logs need to be captured via opcode processing
 	if !t.config.WithLog {
 		return
