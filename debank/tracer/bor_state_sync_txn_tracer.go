@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 var systemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
@@ -184,9 +185,10 @@ func (t *borStateSyncTxnTracer) OnStorageChange(a common.Address, k common.Hash,
 	}
 }
 
-func (t *borStateSyncTxnTracer) OnLog(log *types.Log) {
+func (t *borStateSyncTxnTracer) OnLog(llog *types.Log) {
+	log.Info("OnLog", "tracer", "borStateSyncTxnTracer", "log", llog)
 	if t.tracer.OnLog != nil {
-		t.tracer.OnLog(log)
+		t.tracer.OnLog(llog)
 	}
 }
 

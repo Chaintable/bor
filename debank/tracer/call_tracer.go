@@ -33,7 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	ptypes "github.com/ethereum/go-ethereum/debank/types"
 	"github.com/ethereum/go-ethereum/debank/util"
-	"github.com/ethereum/go-ethereum/log"
+	elog "github.com/ethereum/go-ethereum/log"
 )
 
 type callFrame struct {
@@ -270,6 +270,7 @@ func (t *callTracer) OnTxEnd(receipt *types.Receipt, err error) {
 }
 
 func (t *callTracer) OnLog(log *types.Log) {
+	elog.Info("OnLog", "tracer", "borStateSyncTxnTracer", "log", log)
 	if len(t.callstack) == 0 {
 		t.PendingLogs = append(t.PendingLogs, log)
 		return
