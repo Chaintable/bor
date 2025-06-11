@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -239,7 +238,8 @@ func (t *callTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, fr
 }
 
 func (t *callTracer) OnBorTxStart(txHash common.Hash) {
-	t.gasLimit = math.MaxUint64 / 2
+	//https://github.com/erigontech/erigon/blob/main/core/blockchain.go#L60
+	t.gasLimit = uint64(30_000_000)
 	t.txID = txHash.Hex()
 }
 
