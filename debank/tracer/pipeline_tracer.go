@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 	"time"
-
-	"github.com/ethereum/go-ethereum/debank/metrics"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/debank/metrics"
 	ptypes "github.com/ethereum/go-ethereum/debank/types"
 	"github.com/ethereum/go-ethereum/debank/util"
 	"github.com/ethereum/go-ethereum/log"
@@ -75,15 +76,19 @@ func (t *PipelineTracer) OnBlockStart(event tracing.BlockEvent) {
 	BlockCtx.BlockDiff = &ptypes.BlockStorageDiff{}
 	BlockCtx.BlockHeader = util.BuildPilelineBlockHeader(event.Block)
 	BlockCtx.BlockFile = &ptypes.BlockFile{
-		Block:  util.BuildPipelineBlock(event.Block),
-		Events: make([]ptypes.Event, 0),
-		Txs:    make([]ptypes.Transaction, 0),
-		Traces: make([]ptypes.Trace, 0),
+		Block:            util.BuildPipelineBlock(event.Block),
+		Events:           make([]ptypes.Event, 0),
+		Txs:              make([]ptypes.Transaction, 0),
+		Traces:           make([]ptypes.Trace, 0),
+		ErrorEvents:      make([]ptypes.Event, 0),
+		ErrorTraces:      make([]ptypes.Trace, 0),
+		StorageContracts: make([]string, 0),
 	}
 	BlockCtx.Tx = nil
 	BlockCtx.From = common.Address{}
 	BlockCtx.BlockStartTime = time.Now()
 	BlockCtx.Committed = false
+	BlockCtx.ChangeContracts = make(map[common.Address]struct{})
 }
 
 func (t *PipelineTracer) OnBlockEnd(blockErr error) {
@@ -103,6 +108,8 @@ func (t *PipelineTracer) OnBlockEnd(blockErr error) {
 		}
 	}
 	metrics.BlockProcessTimer.UpdateSince(BlockCtx.BlockStartTime)
+
+	// TODO on commit
 }
 
 func (t *PipelineTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transaction, from common.Address) {
@@ -135,31 +142,27 @@ func (t *PipelineTracer) OnTxEnd(receipt *types.Receipt, err error) {
 }
 
 func (t *PipelineTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
-	if t.callTracer == nil {
-		return
+	if t.callTracer != nil {
+		t.callTracer.OnEnter(depth, typ, from, to, input, gas, value)
 	}
-	t.callTracer.OnEnter(depth, typ, from, to, input, gas, value)
 }
 
 func (t *PipelineTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
-	if t.callTracer == nil {
-		return
+	if t.callTracer != nil {
+		t.callTracer.OnExit(depth, output, gasUsed, err, reverted)
 	}
-	t.callTracer.OnExit(depth, output, gasUsed, err, reverted)
 }
 
 func (t *PipelineTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
-	if t.callTracer == nil {
-		return
+	if t.callTracer != nil {
+		t.callTracer.OnOpcode(pc, op, gas, cost, scope, rData, depth, err)
 	}
-	t.callTracer.OnOpcode(pc, op, gas, cost, scope, rData, depth, err)
 }
 
 func (t *PipelineTracer) OnLog(log *types.Log) {
-	if t.callTracer == nil {
-		return
+	if t.callTracer != nil {
+		t.callTracer.OnLog(log)
 	}
-	t.callTracer.OnLog(log)
 }
 
 func (t *PipelineTracer) OnGenesisBlock(block *types.Block, alloc types.GenesisAlloc) {
@@ -187,7 +190,16 @@ func (t *PipelineTracer) OnGenesisBlock(block *types.Block, alloc types.GenesisA
 
 	// 业务s3
 	blockFile := &ptypes.BlockFile{
-		Block: util.BuildPipelineBlock(block),
+		Block:            util.BuildPipelineBlock(block),
+		Txs:              make([]ptypes.Transaction, 0),
+		Events:           make([]ptypes.Event, 0),
+		Traces:           make([]ptypes.Trace, 0),
+		ErrorEvents:      make([]ptypes.Event, 0),
+		ErrorTraces:      make([]ptypes.Trace, 0),
+		StorageContracts: make([]string, 0),
+	}
+	for _, diff := range blockDiff.StorageDiff {
+		blockFile.StorageContracts = append(blockFile.StorageContracts, strings.ToLower(diff.Address.Hex()))
 	}
 	// upload block file and meta data
 	err = uploadBlockFile(blockFile)
@@ -230,6 +242,10 @@ func (t *PipelineTracer) OnCommit(originRoot common.Hash, root common.Hash, dest
 		BlockCtx.BlockDiff = stateDiff
 	} else {
 		BlockCtx.BlockDiff = nil
+	}
+
+	for addr := range BlockCtx.ChangeContracts {
+		BlockCtx.BlockFile.StorageContracts = append(BlockCtx.BlockFile.StorageContracts, strings.ToLower(addr.Hex()))
 	}
 
 	var wg sync.WaitGroup
@@ -308,4 +324,8 @@ func (t *PipelineTracer) OnCommit(originRoot common.Hash, root common.Hash, dest
 	BlockCtx.Committed = true
 
 	metrics.LatestUploadedBlockNumber.Update(int64(BlockCtx.BlockNumber))
+}
+
+func addressToHash(a common.Address) common.Hash {
+	return crypto.HashData(crypto.NewKeccakState(), a.Bytes())
 }
