@@ -1264,7 +1264,7 @@ func (c *Bor) CommitStates(
 	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(header.Number.Uint64(), header.Hash()))
 	if c.tracer != nil {
 		stateReceiverContract := common.HexToAddress(c.config.StateReceiverContract)
-		vmConfig = &vm.Config{Tracer: tracer.NewBorStateSyncTxnTracer(c.tracer, totalStateSyncData, stateReceiverContract)}
+		vmConfig = &vm.Config{Tracer: tracer.NewBorStateSyncTxnTracer(c.tracer, stateReceiverContract)}
 	}
 	if totalStateSyncData > 0 {
 		if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnBorTxStart != nil {
