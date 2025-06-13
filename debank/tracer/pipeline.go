@@ -151,7 +151,7 @@ func uploadBlockHeader(blockHeader *ptypes.Header) error {
 		return fmt.Errorf("failed to serialize block header: %v", err)
 	}
 	if blockHeader.Number.ToInt().Uint64() == 2627299 {
-		log.Info("Upload block 2627299", "s3file", s3BlockFile, "data length", len(s3BlockFile.Data))
+		log.Warn("Upload block 2627299", "s3file", s3BlockFile, "data length", len(s3BlockFile.Data))
 	}
 	err = NodeXPusher.UploadFile(s3BlockFile)
 	if err != nil {
