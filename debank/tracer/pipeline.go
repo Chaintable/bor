@@ -16,15 +16,16 @@ import (
 )
 
 type ExtraInfo struct {
-	BlockNumber uint64
-	BlockHash   common.Hash
-	BlockFile   *ptypes.BlockFile
-	Tx          *types.Transaction
-	From        common.Address
-	BlockHeader *ptypes.Header
-	BlockDiff   *ptypes.BlockStorageDiff
-	BlockChange *ptypes.BlockChangeNotification
-	Committed   bool
+	BlockNumber     uint64
+	BlockHash       common.Hash
+	BlockFile       *ptypes.BlockFile
+	Tx              *types.Transaction
+	From            common.Address
+	BlockHeader     *ptypes.Header
+	BlockDiff       *ptypes.BlockStorageDiff
+	BlockChange     *ptypes.BlockChangeNotification
+	Committed       bool
+	ChangeContracts map[common.Address]struct{}
 	// metrics timer
 	TxStartTime    time.Time
 	BlockStartTime time.Time
@@ -148,6 +149,9 @@ func uploadBlockHeader(blockHeader *ptypes.Header) error {
 	s3BlockFile, err := processor.SerializeHeader(BizChainID, blockHeader)
 	if err != nil {
 		return fmt.Errorf("failed to serialize block header: %v", err)
+	}
+	if len(s3BlockFile.Data) == 0 {
+		log.Crit("Failed to upload block header", "data length", len(s3BlockFile.Data), "header", blockHeader)
 	}
 	err = NodeXPusher.UploadFile(s3BlockFile)
 	if err != nil {
