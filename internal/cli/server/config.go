@@ -143,6 +143,9 @@ type Config struct {
 
 	// Pprof has the pprof related settings
 	Pprof *PprofConfig `hcl:"pprof,block" toml:"pprof,block"`
+
+	// VmTrace has the vm trace related settings
+	VmTrace VmTraceConfig `hcl:"vmtrace,optional" toml:"vmtrace,optional"`
 }
 
 type LoggingConfig struct {
@@ -606,6 +609,11 @@ type ParallelEVMConfig struct {
 	SpeculativeProcesses int `hcl:"procs,optional" toml:"procs,optional"`
 
 	Enforce bool `hcl:"enforce,optional" toml:"enforce,optional"`
+}
+
+type VmTraceConfig struct {
+	Type       string `hcl:"type,optional" toml:"type,optional"`
+	JSONConfig string `hcl:"jsonconfig,optional" toml:"jsonconfig,optional"`
 }
 
 func DefaultConfig() *Config {
@@ -1218,6 +1226,11 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 
 	n.EnableBlockTracking = c.Logging.EnableBlockTracking
 
+	// vmtrace
+	{
+		n.VMTrace = c.VmTrace.Type
+		n.VMTraceJsonConfig = c.VmTrace.JSONConfig
+	}
 	return &n, nil
 }
 
