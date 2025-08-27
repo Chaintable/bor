@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/ethereum/go-ethereum/internal/cli/flagset"
+	"github.com/ethereum/go-ethereum/internal/flags"
 )
 
 func (c *Command) Flags(config *Config) *flagset.Flagset {
@@ -1049,6 +1050,21 @@ func (c *Command) Flags(config *Config) *flagset.Flagset {
 		Usage:   "Turn on block profiling with the given rate",
 		Value:   &c.cliConfig.Pprof.BlockProfileRate,
 		Default: c.cliConfig.Pprof.BlockProfileRate,
+	})
+
+	f.StringFlag(&flagset.StringFlag{
+		Name:    "vmtrace",
+		Usage:   "Name of tracer which should record internal VM operations (costly)",
+		Value:   &c.cliConfig.VmTrace.Type,
+		Default: c.cliConfig.VmTrace.Type,
+		Group:   flags.VMCategory,
+	})
+	f.StringFlag(&flagset.StringFlag{
+		Name:    "vmtrace.jsonconfig",
+		Usage:   "Tracer configuration (JSON)",
+		Value:   &c.cliConfig.VmTrace.JSONConfig,
+		Default: c.cliConfig.VmTrace.JSONConfig,
+		Group:   flags.VMCategory,
 	})
 	// f.StringFlag(&flagset.StringFlag{
 	// 	Name:    "pprof.cpuprofile",
