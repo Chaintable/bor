@@ -18,7 +18,6 @@ package core_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -190,7 +189,7 @@ func TestSignData(t *testing.T) {
 	createAccount(control, api, t)
 	control.approveCh <- "1"
 
-	list, err := api.List(context.Background())
+	list, err := api.List(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +199,7 @@ func TestSignData(t *testing.T) {
 	control.approveCh <- "Y"
 	control.inputCh <- "wrongpassword"
 
-	signature, err := api.SignData(context.Background(), apitypes.TextPlain.Mime, a, hexutil.Encode([]byte("EHLO world")))
+	signature, err := api.SignData(t.Context(), apitypes.TextPlain.Mime, a, hexutil.Encode([]byte("EHLO world")))
 	if signature != nil {
 		t.Errorf("Expected nil-data, got %x", signature)
 	}
@@ -210,7 +209,7 @@ func TestSignData(t *testing.T) {
 	}
 	control.approveCh <- "No way"
 
-	signature, err = api.SignData(context.Background(), apitypes.TextPlain.Mime, a, hexutil.Encode([]byte("EHLO world")))
+	signature, err = api.SignData(t.Context(), apitypes.TextPlain.Mime, a, hexutil.Encode([]byte("EHLO world")))
 	if signature != nil {
 		t.Errorf("Expected nil-data, got %x", signature)
 	}
@@ -222,7 +221,7 @@ func TestSignData(t *testing.T) {
 	control.approveCh <- "Y"
 	control.inputCh <- "a_long_password"
 
-	signature, err = api.SignData(context.Background(), apitypes.TextPlain.Mime, a, hexutil.Encode([]byte("EHLO world")))
+	signature, err = api.SignData(t.Context(), apitypes.TextPlain.Mime, a, hexutil.Encode([]byte("EHLO world")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +235,7 @@ func TestSignData(t *testing.T) {
 
 	var want []byte
 
-	if signature, err = api.SignTypedData(context.Background(), a, typedData); err != nil {
+	if signature, err = api.SignTypedData(t.Context(), a, typedData); err != nil {
 		t.Fatal(err)
 	} else if signature == nil || len(signature) != 65 {
 		t.Errorf("Expected 65 byte signature (got %d bytes)", len(signature))
@@ -250,7 +249,7 @@ func TestSignData(t *testing.T) {
 
 	if typedDataJson, err := json.Marshal(typedData); err != nil {
 		t.Fatal(err)
-	} else if signature, err = api.SignData(context.Background(), apitypes.DataTyped.Mime, a, hexutil.Encode(typedDataJson)); err != nil {
+	} else if signature, err = api.SignData(t.Context(), apitypes.DataTyped.Mime, a, hexutil.Encode(typedDataJson)); err != nil {
 		t.Fatal(err)
 	} else if signature == nil || len(signature) != 65 {
 		t.Errorf("Expected 65 byte signature (got %d bytes)", len(signature))
@@ -387,8 +386,7 @@ func sign(typedData apitypes.TypedData) ([]byte, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-
-	rawData := []byte(fmt.Sprintf("\x19\x01%s%s", string(domainSeparator), string(typedDataHash)))
+	rawData := fmt.Appendf(nil, "\x19\x01%s%s", string(domainSeparator), string(typedDataHash))
 	sighash := crypto.Keccak256(rawData)
 
 	return typedDataHash, sighash, nil
@@ -1075,5 +1073,51 @@ func TestComplexTypedDataWithLowercaseReftype(t *testing.T) {
 
 	if !bytes.Equal(expSigHash, sighash) {
 		t.Fatalf("Error, got %x, wanted %x", sighash, expSigHash)
+	}
+}
+
+var recursiveBytesTypesStandard = apitypes.Types{
+	"EIP712Domain": {
+		{
+			Name: "name",
+			Type: "string",
+		},
+		{
+			Name: "version",
+			Type: "string",
+		},
+		{
+			Name: "chainId",
+			Type: "uint256",
+		},
+		{
+			Name: "verifyingContract",
+			Type: "address",
+		},
+	},
+	"Val": {
+		{
+			Name: "field",
+			Type: "bytes[][]",
+		},
+	},
+}
+
+var recursiveBytesMessageStandard = map[string]interface{}{
+	"field": [][][]byte{{{1}, {2}}, {{3}, {4}}},
+}
+
+var recursiveBytesTypedData = apitypes.TypedData{
+	Types:       recursiveBytesTypesStandard,
+	PrimaryType: "Val",
+	Domain:      domainStandard,
+	Message:     recursiveBytesMessageStandard,
+}
+
+func TestEncodeDataRecursiveBytes(t *testing.T) {
+	typedData := recursiveBytesTypedData
+	_, err := typedData.EncodeData(typedData.PrimaryType, typedData.Message, 0)
+	if err != nil {
+		t.Fatalf("got err %v", err)
 	}
 }

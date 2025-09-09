@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
@@ -31,6 +30,10 @@ func (c ChainContext) Engine() consensus.Engine {
 
 func (c ChainContext) GetHeader(hash common.Hash, number uint64) *types.Header {
 	return c.Chain.GetHeader(hash, number)
+}
+
+func (c ChainContext) Config() *params.ChainConfig {
+	return c.Chain.Config()
 }
 
 // callmsg implements core.Message to allow passing it as a transaction simulator.
@@ -65,7 +68,7 @@ func GetSystemMessage(toAddress common.Address, data []byte) Callmsg {
 func ApplyMessage(
 	_ context.Context,
 	msg Callmsg,
-	state *state.StateDB,
+	state vm.StateDB,
 	header *types.Header,
 	chainConfig *params.ChainConfig,
 	chainContext core.ChainContext,
@@ -82,12 +85,12 @@ func ApplyMessage(
 	if vmConfig != nil {
 		config = *vmConfig
 	}
-	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, state, chainConfig, config)
+	vmenv := vm.NewEVM(blockContext, state, chainConfig, config)
 
 	// nolint : contextcheck
 	// Apply the transaction to the current state (included in the env)
 	ret, gasLeft, err := vmenv.Call(
-		vm.AccountRef(msg.From()),
+		msg.From(),
 		*msg.To(),
 		msg.Data(),
 		msg.Gas(),
@@ -125,7 +128,7 @@ func ApplyBorMessage(vmenv *vm.EVM, msg Callmsg) (*core.ExecutionResult, error) 
 
 	// Apply the transaction to the current state (included in the env)
 	ret, gasLeft, err := vmenv.Call(
-		vm.AccountRef(msg.From()),
+		msg.From(),
 		*msg.To(),
 		msg.Data(),
 		msg.Gas(),

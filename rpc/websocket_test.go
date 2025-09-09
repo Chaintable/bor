@@ -63,7 +63,7 @@ func TestWebsocketOriginCheck(t *testing.T) {
 	defer srv.Stop()
 	defer httpsrv.Close()
 
-	client, err := DialWebsocket(context.Background(), wsURL, "http://ekzample.com")
+	client, err := DialWebsocket(t.Context(), wsURL, "http://ekzample.com")
 	if err == nil {
 		client.Close()
 		t.Fatal("no error for wrong origin")
@@ -75,7 +75,7 @@ func TestWebsocketOriginCheck(t *testing.T) {
 	}
 
 	// Connections without origin header should work.
-	client, err = DialWebsocket(context.Background(), wsURL, "")
+	client, err = DialWebsocket(t.Context(), wsURL, "")
 	if err != nil {
 		t.Fatalf("error for empty origin: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestWebsocketLargeCall(t *testing.T) {
 	defer srv.Stop()
 	defer httpsrv.Close()
 
-	client, err := DialWebsocket(context.Background(), wsURL, "")
+	client, err := DialWebsocket(t.Context(), wsURL, "")
 	if err != nil {
 		t.Fatalf("can't dial: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestWebsocketLargeRead(t *testing.T) {
 				expLimit = *limit // 0 means infinite
 			}
 		}
-		client, err := DialOptions(context.Background(), wsURL, opts...)
+		client, err := DialOptions(t.Context(), wsURL, opts...)
 		if err != nil {
 			t.Fatalf("can't dial: %v", err)
 		}
@@ -183,6 +183,8 @@ func TestWebsocketLargeRead(t *testing.T) {
 }
 
 func TestWebsocketPeerInfo(t *testing.T) {
+	t.Parallel()
+
 	var (
 		s     = newTestServer()
 		ts    = httptest.NewServer(s.WebsocketHandler([]string{"origin.example.com"}))
@@ -192,7 +194,7 @@ func TestWebsocketPeerInfo(t *testing.T) {
 	defer s.Stop()
 	defer ts.Close()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	c, err := DialWebsocket(ctx, tsurl, "origin.example.com")
 	if err != nil {
@@ -230,7 +232,7 @@ func TestClientWebsocketPing(t *testing.T) {
 	var (
 		sendPing    = make(chan struct{})
 		server      = wsPingTestServer(t, sendPing)
-		ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel = context.WithTimeout(t.Context(), 2*time.Second)
 	)
 
 	defer cancel()
@@ -276,6 +278,8 @@ func TestClientWebsocketPing(t *testing.T) {
 
 // This checks that the websocket transport can deal with large messages.
 func TestClientWebsocketLargeMessage(t *testing.T) {
+	t.Parallel()
+
 	var (
 		srv     = NewServer("", 0, 0)
 		httpsrv = httptest.NewServer(srv.WebsocketHandler(nil))
@@ -288,7 +292,7 @@ func TestClientWebsocketLargeMessage(t *testing.T) {
 	respLength := wsDefaultReadLimit - 50
 	srv.RegisterName("test", largeRespService{respLength})
 
-	c, err := DialWebsocket(context.Background(), wsURL, "")
+	c, err := DialWebsocket(t.Context(), wsURL, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,5 +426,79 @@ func wsPingTestHandler(t *testing.T, conn *websocket.Conn, shutdown, sendPing <-
 			conn.Close()
 			return
 		}
+	}
+}
+
+func TestWebsocketMethodNameLengthLimit(t *testing.T) {
+	t.Parallel()
+
+	var (
+		srv     = newTestServer()
+		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}))
+		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
+	)
+	defer srv.Stop()
+	defer httpsrv.Close()
+
+	client, err := DialWebsocket(t.Context(), wsURL, "")
+	if err != nil {
+		t.Fatalf("can't dial: %v", err)
+	}
+	defer client.Close()
+
+	// Test cases
+	tests := []struct {
+		name           string
+		method         string
+		params         []interface{}
+		expectedError  string
+		isSubscription bool
+	}{
+		{
+			name:           "valid method name",
+			method:         "test_echo",
+			params:         []interface{}{"test", 1},
+			expectedError:  "",
+			isSubscription: false,
+		},
+		{
+			name:           "method name too long",
+			method:         "test_" + string(make([]byte, maxMethodNameLength+1)),
+			params:         []interface{}{"test", 1},
+			expectedError:  "method name too long",
+			isSubscription: false,
+		},
+		{
+			name:           "valid subscription",
+			method:         "nftest_subscribe",
+			params:         []interface{}{"someSubscription", 1, 2},
+			expectedError:  "",
+			isSubscription: true,
+		},
+		{
+			name:           "subscription name too long",
+			method:         string(make([]byte, maxMethodNameLength+1)) + "_subscribe",
+			params:         []interface{}{"newHeads"},
+			expectedError:  "subscription name too long",
+			isSubscription: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var result interface{}
+			err := client.Call(&result, tt.method, tt.params...)
+			if tt.expectedError == "" {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if !strings.Contains(err.Error(), tt.expectedError) {
+					t.Errorf("expected error containing %q, got %q", tt.expectedError, err.Error())
+				}
+			}
+		})
 	}
 }

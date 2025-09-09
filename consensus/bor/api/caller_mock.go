@@ -8,9 +8,11 @@ import (
 	context "context"
 	reflect "reflect"
 
+	common "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
 	state "github.com/ethereum/go-ethereum/core/state"
 	ethapi "github.com/ethereum/go-ethereum/internal/ethapi"
+	override "github.com/ethereum/go-ethereum/internal/ethapi/override"
 	rpc "github.com/ethereum/go-ethereum/rpc"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -39,7 +41,7 @@ func (m *MockCaller) EXPECT() *MockCallerMockRecorder {
 }
 
 // Call mocks base method.
-func (m *MockCaller) Call(arg0 context.Context, arg1 ethapi.TransactionArgs, arg2 *rpc.BlockNumberOrHash, arg3 *ethapi.StateOverride, arg4 *ethapi.BlockOverrides) (hexutil.Bytes, error) {
+func (m *MockCaller) Call(arg0 context.Context, arg1 ethapi.TransactionArgs, arg2 *rpc.BlockNumberOrHash, arg3 *override.StateOverride, arg4 *override.BlockOverrides) (hexutil.Bytes, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Call", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(hexutil.Bytes)
@@ -54,7 +56,7 @@ func (mr *MockCallerMockRecorder) Call(arg0, arg1, arg2, arg3, arg4 interface{})
 }
 
 // CallWithState mocks base method.
-func (m *MockCaller) CallWithState(arg0 context.Context, arg1 ethapi.TransactionArgs, arg2 *rpc.BlockNumberOrHash, arg3 *state.StateDB, arg4 *ethapi.StateOverride, arg5 *ethapi.BlockOverrides) (hexutil.Bytes, error) {
+func (m *MockCaller) CallWithState(arg0 context.Context, arg1 ethapi.TransactionArgs, arg2 *rpc.BlockNumberOrHash, arg3 *state.StateDB, arg4 *override.StateOverride, arg5 *override.BlockOverrides) (hexutil.Bytes, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CallWithState", arg0, arg1, arg2, arg3, arg4, arg5)
 	ret0, _ := ret[0].(hexutil.Bytes)
@@ -66,4 +68,19 @@ func (m *MockCaller) CallWithState(arg0 context.Context, arg1 ethapi.Transaction
 func (mr *MockCallerMockRecorder) CallWithState(arg0, arg1, arg2, arg3, arg4, arg5 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CallWithState", reflect.TypeOf((*MockCaller)(nil).CallWithState), arg0, arg1, arg2, arg3, arg4, arg5)
+}
+
+// GetBalance mocks base method.
+func (m *MockCaller) GetBalance(arg0 context.Context, arg1 common.Address, arg2 rpc.BlockNumberOrHash) (*hexutil.Big, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBalance", arg0, arg1, arg2)
+	ret0, _ := ret[0].(*hexutil.Big)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBalance indicates an expected call of GetBalance.
+func (mr *MockCallerMockRecorder) GetBalance(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBalance", reflect.TypeOf((*MockCaller)(nil).GetBalance), arg0, arg1, arg2)
 }

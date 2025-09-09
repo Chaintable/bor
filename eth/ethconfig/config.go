@@ -18,7 +18,6 @@
 package ethconfig
 
 import (
-	"errors"
 	"math/big"
 	"time"
 
@@ -29,11 +28,12 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/bor/contract"
 	"github.com/ethereum/go-ethereum/consensus/bor/heimdall" //nolint:typecheck
 	"github.com/ethereum/go-ethereum/consensus/bor/heimdall/span"
-	"github.com/ethereum/go-ethereum/consensus/bor/heimdallapp"
 	"github.com/ethereum/go-ethereum/consensus/bor/heimdallgrpc"
+	"github.com/ethereum/go-ethereum/consensus/bor/heimdallws"
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
@@ -58,10 +58,12 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the Ethereum main net.
 var Defaults = Config{
-	SyncMode:           downloader.FullSync,
+	SyncMode:           downloader.SnapSync,
+	HistoryMode:        history.KeepAll,
 	NetworkId:          0, // enable auto configuration of networkID == chainID
 	TxLookupLimit:      2350000,
-	TransactionHistory: 2350000,
+	TransactionHistory: 2350000, // Note: used in bor cli
+	LogHistory:         2350000, // Note: used in bor cli
 	StateHistory:       params.FullImmutabilityThreshold,
 	DatabaseCache:      512,
 	TrieCleanCache:     154,
@@ -91,6 +93,9 @@ type Config struct {
 	NetworkId uint64
 	SyncMode  downloader.SyncMode
 
+	// HistoryMode configures chain history retention.
+	HistoryMode history.HistoryMode
+
 	// This can be set to list of enrtree:// URLs which will be queried for
 	// nodes to connect to.
 	EthDiscoveryURLs  []string
@@ -103,8 +108,11 @@ type Config struct {
 	// Deprecated: use 'TransactionHistory' instead.
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 
-	TransactionHistory uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
-	StateHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
+	TransactionHistory   uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
+	LogHistory           uint64 `toml:",omitempty"` // The maximum number of blocks from head where a log search index is maintained.
+	LogNoHistory         bool   `toml:",omitempty"` // No log search index is maintained.
+	LogExportCheckpoints string // export log index checkpoints to file
+	StateHistory         uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
 
 	// State scheme represents the scheme used to store ethereum states and trie
 	// nodes on top. It can be 'hash', 'path', or none which means use the scheme
@@ -155,9 +163,6 @@ type Config struct {
 	VMTrace           string
 	VMTraceJsonConfig string
 
-	// Miscellaneous options
-	DocRoot string `toml:"-"`
-
 	// RPCGasCap is the global gas cap for eth-call variants.
 	RPCGasCap uint64
 
@@ -171,8 +176,8 @@ type Config struct {
 	// send-transaction variants. The unit is ether.
 	RPCTxFeeCap float64
 
-	// OverrideCancun (TODO: remove after the fork)
-	OverrideCancun *big.Int `toml:",omitempty"`
+	// OverridePrague (TODO: remove after the fork)
+	OverridePrague *big.Int `toml:",omitempty"`
 
 	// URL to connect to Heimdall node
 	HeimdallURL string
@@ -185,6 +190,9 @@ type Config struct {
 
 	// Address to connect to Heimdall gRPC server
 	HeimdallgRPCAddress string
+
+	// Address to connect to Heimdall WS subscription server
+	HeimdallWSAddress string
 
 	// Run heimdall service as a child process
 	RunHeimdall bool
@@ -224,7 +232,7 @@ func CreateConsensusEngine(chainConfig *params.ChainConfig, ethConfig *Config, d
 		spanner := span.NewChainSpanner(blockchainAPI, contract.ValidatorSet(), chainConfig, common.HexToAddress(chainConfig.Bor.ValidatorContract))
 
 		if ethConfig.WithoutHeimdall {
-			return bor.New(chainConfig, db, blockchainAPI, spanner, nil, genesisContractsClient, ethConfig.DevFakeAuthor, tracer), nil
+			return bor.New(chainConfig, db, blockchainAPI, spanner, nil, nil, genesisContractsClient, ethConfig.DevFakeAuthor, tracer), nil
 		} else {
 			if ethConfig.DevFakeAuthor {
 				log.Warn("Sanitizing DevFakeAuthor", "Use DevFakeAuthor with", "--bor.withoutheimdall")
@@ -232,21 +240,26 @@ func CreateConsensusEngine(chainConfig *params.ChainConfig, ethConfig *Config, d
 
 			var heimdallClient bor.IHeimdallClient
 			if ethConfig.RunHeimdall && ethConfig.UseHeimdallApp {
-				heimdallClient = heimdallapp.NewHeimdallAppClient()
+				// TODO: Running heimdall from bor is not tested yet.
+				// heimdallClient = heimdallapp.NewHeimdallAppClient()
+				panic("Running heimdall from bor is not implemented yet. Please use heimdall gRPC or HTTP client instead.")
 			} else if ethConfig.HeimdallgRPCAddress != "" {
 				heimdallClient = heimdallgrpc.NewHeimdallGRPCClient(ethConfig.HeimdallgRPCAddress)
 			} else {
 				heimdallClient = heimdall.NewHeimdallClient(ethConfig.HeimdallURL, ethConfig.HeimdallTimeout)
 			}
 
-			return bor.New(chainConfig, db, blockchainAPI, spanner, heimdallClient, genesisContractsClient, false, tracer), nil
+			var heimdallWSClient bor.IHeimdallWSClient
+			var err error
+			if ethConfig.HeimdallWSAddress != "" {
+				heimdallWSClient, err = heimdallws.NewHeimdallWSClient(ethConfig.HeimdallWSAddress)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			return bor.New(chainConfig, db, blockchainAPI, spanner, heimdallClient, heimdallWSClient, genesisContractsClient, false, tracer), nil
 		}
-	}
-	// If defaulting to proof-of-work, enforce an already merged network since
-	// we cannot run PoW algorithms anymore, so we cannot even follow a chain
-	// not coordinated by a beacon node.
-	if !chainConfig.TerminalTotalDifficultyPassed {
-		return nil, errors.New("ethash is only supported as a historical component of already merged networks")
 	}
 	return beacon.New(ethash.NewFaker()), nil
 }

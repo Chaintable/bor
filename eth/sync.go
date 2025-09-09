@@ -37,7 +37,7 @@ const (
 // syncTransactions starts sending all currently pending transactions to the given peer.
 func (h *handler) syncTransactions(p *eth.Peer) {
 	var hashes []common.Hash
-	for _, batch := range h.txpool.Pending(txpool.PendingFilter{OnlyPlainTxs: true}) {
+	for _, batch := range h.txpool.Pending(txpool.PendingFilter{OnlyPlainTxs: true}, nil) {
 		for _, tx := range batch {
 			hashes = append(hashes, tx.Hash)
 		}
@@ -146,17 +146,6 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	if cs.doneCh != nil {
 		return nil // Sync already running
 	}
-	// If a beacon client once took over control, disable the entire legacy sync
-	// path from here on end. Note, there is a slight "race" between reaching TTD
-	// and the beacon client taking over. The downloader will enforce that nothing
-	// above the first TTD will be delivered to the chain for import.
-	//
-	// An alternative would be to check the local chain for exceeding the TTD and
-	// avoid triggering a sync in that case, but that could also miss sibling or
-	// other family TTD block being accepted.
-	if cs.handler.chain.Config().TerminalTotalDifficultyPassed {
-		return nil
-	}
 	// Ensure we're at minimum peer count.
 	minPeers := defaultMinSyncPeers
 	if cs.forced {
@@ -201,7 +190,10 @@ func peerToSyncOp(mode downloader.SyncMode, p *eth.Peer) *chainSyncOp {
 }
 
 func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
-	// TODO - uncomment when we (Polygon-PoS, bor) have snap sync/pbss
+	// Enforce full sync as snap sync is disabled momentarily
+	head := cs.handler.chain.CurrentBlock()
+	td := cs.handler.chain.GetTd(head.Hash(), head.Number.Uint64())
+	return downloader.FullSync, td
 	/*
 		// If we're in snap sync mode, return that directly
 		if cs.handler.snapSync.Load() {
@@ -209,13 +201,10 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 			td := cs.handler.chain.GetTd(block.Hash(), block.Number.Uint64())
 			return downloader.SnapSync, td
 		}
-	*/
 
-	// We are probably in full sync, but we might have rewound to before the
-	// snap sync pivot, check if we should re-enable snap sync.
-	head := cs.handler.chain.CurrentBlock()
-	// TODO - uncomment when we (Polygon-PoS, bor) have snap sync/pbss
-	/*
+		// We are probably in full sync, but we might have rewound to before the
+		// snap sync pivot, check if we should re-enable snap sync.
+		head := cs.handler.chain.CurrentBlock()
 		if pivot := rawdb.ReadLastPivotNumber(cs.handler.database); pivot != nil {
 			if head.Number.Uint64() < *pivot {
 				block := cs.handler.chain.CurrentSnapBlock()
@@ -223,11 +212,8 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 				return downloader.SnapSync, td
 			}
 		}
-	*/
 
-	// TODO - uncomment when we (Polygon-PoS, bor) have snap sync/pbss
-	// For more info - https://github.com/ethereum/go-ethereum/pull/28171
-	/*
+		// For more info - https://github.com/ethereum/go-ethereum/pull/28171
 		// We are in a full sync, but the associated head state is missing. To complete
 		// the head state, forcefully rerun the snap sync. Note it doesn't mean the
 		// persistent state is corrupted, just mismatch with the head block.
@@ -237,11 +223,12 @@ func (cs *chainSyncer) modeAndLocalHead() (downloader.SyncMode, *big.Int) {
 			log.Info("Reenabled snap sync as chain is stateless")
 			return downloader.SnapSync, td
 		}
-	*/
-	// Nope, we're really full syncing
-	td := cs.handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 
-	return downloader.FullSync, td
+		// Nope, we're really full syncing
+		td := cs.handler.chain.GetTd(head.Hash(), head.Number.Uint64())
+
+		return downloader.FullSync, td
+	*/
 }
 
 // startSync launches doSync in a new goroutine.

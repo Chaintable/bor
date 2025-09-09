@@ -2,62 +2,75 @@ package heimdallgrpc
 
 import (
 	"context"
+	"strconv"
+	"time"
 
-	"github.com/ethereum/go-ethereum/consensus/bor/heimdall/span"
-	"github.com/ethereum/go-ethereum/consensus/bor/valset"
+	"github.com/ethereum/go-ethereum/consensus/bor/heimdall"
 	"github.com/ethereum/go-ethereum/log"
 
-	proto "github.com/maticnetwork/polyproto/heimdall"
-	protoutils "github.com/maticnetwork/polyproto/utils"
+	"github.com/0xPolygon/heimdall-v2/x/bor/types"
 )
 
-func (h *HeimdallGRPCClient) Span(ctx context.Context, spanID uint64) (*span.HeimdallSpan, error) {
-	req := &proto.SpanRequest{
-		ID: spanID,
-	}
-
+func (h *HeimdallGRPCClient) GetSpan(ctx context.Context, spanID uint64) (*types.Span, error) {
 	log.Info("Fetching span", "spanID", spanID)
 
-	res, err := h.client.Span(ctx, req)
+	var err error
+
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+
+	// Start the timer and set the request type on the context.
+	start := time.Now()
+	ctx = heimdall.WithRequestType(ctxWithTimeout, heimdall.SpanRequest)
+
+	// Defer the metrics call.
+	defer func() {
+		heimdall.SendMetrics(ctx, start, err == nil)
+	}()
+
+	req := &types.QuerySpanByIdRequest{
+		Id: strconv.FormatUint(spanID, 10),
+	}
+
+	res, err := h.borQueryClient.GetSpanById(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
+	resSpan := res.GetSpan()
+
 	log.Info("Fetched span", "spanID", spanID)
 
-	return parseSpan(res.Result), nil
+	return resSpan, nil
 }
 
-func parseSpan(protoSpan *proto.Span) *span.HeimdallSpan {
-	resp := &span.HeimdallSpan{
-		Span: span.Span{
-			ID:         protoSpan.ID,
-			StartBlock: protoSpan.StartBlock,
-			EndBlock:   protoSpan.EndBlock,
-		},
-		ValidatorSet:      valset.ValidatorSet{},
-		SelectedProducers: []valset.Validator{},
-		ChainID:           protoSpan.ChainID,
+func (h *HeimdallGRPCClient) GetLatestSpan(ctx context.Context) (*types.Span, error) {
+	log.Info("Fetching latest span")
+
+	var err error
+
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+
+	// Start the timer and set the request type on the context.
+	start := time.Now()
+	ctx = heimdall.WithRequestType(ctxWithTimeout, heimdall.LatestSpanRequest)
+
+	// Defer the metrics call.
+	defer func() {
+		heimdall.SendMetrics(ctx, start, err == nil)
+	}()
+
+	req := &types.QueryLatestSpanRequest{}
+
+	res, err := h.borQueryClient.GetLatestSpan(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, validator := range protoSpan.ValidatorSet.Validators {
-		resp.ValidatorSet.Validators = append(resp.ValidatorSet.Validators, parseValidator(validator))
-	}
+	resSpan := res.GetSpan()
 
-	resp.ValidatorSet.Proposer = parseValidator(protoSpan.ValidatorSet.Proposer)
+	log.Info("Fetched latest span")
 
-	for _, validator := range protoSpan.SelectedProducers {
-		resp.SelectedProducers = append(resp.SelectedProducers, *parseValidator(validator))
-	}
-
-	return resp
-}
-
-func parseValidator(validator *proto.Validator) *valset.Validator {
-	return &valset.Validator{
-		ID:               validator.ID,
-		Address:          protoutils.ConvertH160toAddress(validator.Address),
-		VotingPower:      validator.VotingPower,
-		ProposerPriority: validator.ProposerPriority,
-	}
+	return &resSpan, nil
 }

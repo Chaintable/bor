@@ -63,7 +63,7 @@ gcmode = "archive"
     # pricebump = 10
 
 [miner]
-    gaslimit = 30000000
+    gaslimit = 45000000
     # gasprice = "25000000000"
     # mine = false
     # etherbase = ""
@@ -153,6 +153,12 @@ gcmode = "archive"
     # txlookuplimit = 2350000
     # timeout = "1h0m0s"
     # fdlimit = 0
+
+# [history]
+#   transactions = 2350000
+#   logs = 2350000
+#   "logs.disable" = false
+#   state = 90000
 
 # [accounts]
     # unlock = []

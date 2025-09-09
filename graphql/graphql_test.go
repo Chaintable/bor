@@ -17,10 +17,10 @@
 package graphql
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"net/http"
 	"strings"
@@ -360,7 +360,7 @@ func TestGraphQLConcurrentResolvers(t *testing.T) {
 			want: `{"block":{"account":{"balance":"0x0","transactionCount":"0x0","code":"0x"}}}`,
 		},
 	} {
-		res := handler.Schema.Exec(context.Background(), tt.body, "", map[string]interface{}{})
+		res := handler.Schema.Exec(t.Context(), tt.body, "", map[string]interface{}{})
 
 		if res.Errors != nil {
 			t.Fatalf("failed to execute query for testcase #%d: %v", i, res.Errors)
@@ -425,7 +425,7 @@ func TestWithdrawals(t *testing.T) {
 			want: `{"block":{"withdrawalsRoot":"0x8418fc1a48818928f6692f148e9b10e99a88edc093b095cb8ca97950284b553d","withdrawals":[{"validator":"0x5","amount":"0xa"}]}}`,
 		},
 	} {
-		res := handler.Schema.Exec(context.Background(), tt.body, "", map[string]interface{}{})
+		res := handler.Schema.Exec(t.Context(), tt.body, "", map[string]interface{}{})
 		if res.Errors != nil {
 			t.Fatalf("failed to execute query for testcase #%d: %v", i, res.Errors)
 		}
@@ -469,14 +469,18 @@ func newGQLService(t *testing.T, stack *node.Node, shanghai bool, gspec *core.Ge
 	var engine consensus.Engine = ethash.NewFaker()
 	if shanghai {
 		engine = beacon.NewFaker()
-		chainCfg := gspec.Config
-		chainCfg.TerminalTotalDifficultyPassed = true
-		chainCfg.TerminalTotalDifficulty = common.Big0
+		gspec.Config.TerminalTotalDifficulty = common.Big0
 		// GenerateChain will increment timestamps by 10.
 		// Shanghai upgrade at block 1.
-		ShanghaiBlock := big.NewInt(5)
-		chainCfg.ShanghaiBlock = ShanghaiBlock
+		// shanghaiTime := uint64(5)
+		// gspec.Config.ShanghaiTime = &shanghaiTime
+		// Using block 1 instead as bor doesn't allow timestamp based hardforks
+		gspec.Config.ShanghaiBlock = big.NewInt(1)
+	} else {
+		// set an arbitrary large ttd as chains are required to be known to be merged
+		gspec.Config.TerminalTotalDifficulty = big.NewInt(math.MaxInt64)
 	}
+
 	ethBackend, err := eth.New(stack, ethConf)
 	if err != nil {
 		t.Fatalf("could not create eth backend: %v", err)

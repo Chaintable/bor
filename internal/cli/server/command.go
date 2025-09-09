@@ -8,11 +8,14 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/maticnetwork/heimdall/cmd/heimdalld/service"
 	"github.com/mitchellh/cli"
 	"github.com/pelletier/go-toml"
 
 	"github.com/ethereum/go-ethereum/log"
+
+	"github.com/0xPolygon/heimdall-v2/app"
+	heimdalld "github.com/0xPolygon/heimdall-v2/cmd/heimdalld/cmd"
+	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
 )
 
 // Command is the command to start the sever
@@ -122,15 +125,17 @@ func (c *Command) extractFlags(args []string) error {
 		}
 	}
 
+	var tomlConfig *toml.Tree
+
 	// nolint: nestif
 	// check for log-level and verbosity here
 	if configFilePath != "" {
-		data, _ := toml.LoadFile(configFilePath)
-		if data.Has("verbosity") && data.Has("log-level") {
-			log.Warn("Config contains both, verbosity and log-level, log-level will be deprecated soon. Use verbosity only.", "using", data.Get("verbosity"))
-		} else if !data.Has("verbosity") && data.Has("log-level") {
-			log.Warn("Config contains log-level only, note that log-level will be deprecated soon. Use verbosity instead.", "using", data.Get("log-level"))
-			c.cliConfig.Verbosity = VerbosityStringToInt(strings.ToLower(data.Get("log-level").(string)))
+		tomlConfig, _ = toml.LoadFile(configFilePath)
+		if tomlConfig.Has("verbosity") && tomlConfig.Has("log-level") {
+			log.Warn("Config contains both, verbosity and log-level, log-level will be deprecated soon. Use verbosity only.", "using", tomlConfig.Get("verbosity"))
+		} else if !tomlConfig.Has("verbosity") && tomlConfig.Has("log-level") {
+			log.Warn("Config contains log-level only, note that log-level will be deprecated soon. Use verbosity instead.", "using", tomlConfig.Get("log-level"))
+			c.cliConfig.Verbosity = VerbosityStringToInt(strings.ToLower(tomlConfig.Get("log-level").(string)))
 		}
 	} else {
 		tempFlag := 0
@@ -150,9 +155,70 @@ func (c *Command) extractFlags(args []string) error {
 		}
 	}
 
+	// Handle multiple flags for tx lookup limit
+	c.cliConfig.Cache.TxLookupLimit = handleTxLookupLimitFlag(tomlConfig, args, c.cliConfig)
+
 	c.config = c.cliConfig
 
 	return nil
+}
+
+func handleTxLookupLimitFlag(config *toml.Tree, args []string, cliConfig *Config) uint64 {
+	var (
+		oldSet bool
+		newSet bool
+		value  int64
+	)
+
+	for _, val := range args {
+		if strings.HasPrefix(val, "-txlookuplimit") || strings.HasPrefix(val, "--txlookuplimit") {
+			oldSet = true
+		}
+		if strings.HasPrefix(val, "-history.transactions") || strings.HasPrefix(val, "--history.transactions") {
+			newSet = true
+		}
+	}
+
+	if oldSet && newSet {
+		log.Warn("Both, txlookuplimit and history.transactions flags are provided. txlookuplimit will be deprecated soon, using history.transactions", "value", cliConfig.History.TransactionHistory)
+		return cliConfig.History.TransactionHistory
+	}
+
+	if oldSet && !newSet {
+		log.Warn("The flag txlookuplimit will be deprecated soon, please use history.transactions instead")
+		return cliConfig.Cache.TxLookupLimit
+	}
+
+	if newSet && !oldSet {
+		return cliConfig.History.TransactionHistory
+	}
+
+	if config == nil {
+		return cliConfig.History.TransactionHistory
+	}
+
+	oldSet = config.Has("cache.txlookuplimit")
+	newSet = config.Has("history.transactions")
+
+	if oldSet && newSet {
+		value = config.Get("history.transactions").(int64)
+		log.Warn("Config contains both, txlookuplimit and history.transactions. txlookuplimit will be deprecated soon, using history.transactions", "value", value)
+		return uint64(value)
+	}
+
+	if oldSet && !newSet {
+		value = config.Get("cache.txlookuplimit").(int64)
+		log.Warn("The flag txlookuplimit will be deprecated soon, please use history.transactions instead")
+		return uint64(value)
+	}
+
+	if newSet && !oldSet {
+		value = config.Get("history.transactions").(int64)
+		return uint64(value)
+	}
+
+	// User hasn't set any of these flags explcitly, use default value of new flag
+	return cliConfig.History.TransactionHistory
 }
 
 // Run implements the cli.Command interface
@@ -164,15 +230,20 @@ func (c *Command) Run(args []string) int {
 	}
 
 	if c.config.Heimdall.RunHeimdall {
-		shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+		// TODO HV2: Find a way to pass the shutdown ctx to heimdall process
+		_, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
 
 		go func() {
-			service.NewHeimdallService(shutdownCtx, c.getHeimdallArgs())
+			rootCmd := heimdalld.NewRootCmd()
+			if err := svrcmd.Execute(rootCmd, "HD", app.DefaultNodeHome); err != nil {
+				_, _ = fmt.Fprintln(rootCmd.OutOrStderr(), err)
+				os.Exit(1)
+			}
 		}()
 	}
 
-	srv, err := NewServer(c.config, WithGRPCAddress())
+	srv, err := NewServer(c.config)
 	if err != nil {
 		c.UI.Error(err.Error())
 		return 1
@@ -213,9 +284,4 @@ func (c *Command) handleSignals() int {
 // GetConfig returns the user specified config
 func (c *Command) GetConfig() *Config {
 	return c.cliConfig
-}
-
-func (c *Command) getHeimdallArgs() []string {
-	heimdallArgs := strings.Split(c.config.Heimdall.RunHeimdallArgs, ",")
-	return append([]string{"start"}, heimdallArgs...)
 }

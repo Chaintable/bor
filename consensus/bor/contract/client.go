@@ -67,7 +67,7 @@ func NewGenesisContractsClient(
 
 func (gc *GenesisContractsClient) CommitState(
 	event *clerk.EventRecordWithTime,
-	state *state.StateDB,
+	state vm.StateDB,
 	header *types.Header,
 	chCtx statefull.ChainContext,
 	vmConfig *vm.Config,

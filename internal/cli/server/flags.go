@@ -192,6 +192,12 @@ func (c *Command) Flags(config *Config) *flagset.Flagset {
 		Value:   &c.cliConfig.Heimdall.GRPCAddress,
 		Default: c.cliConfig.Heimdall.GRPCAddress,
 	})
+	f.StringFlag(&flagset.StringFlag{
+		Name:    "bor.heimdallWS",
+		Usage:   "Address of Heimdall ws subscription service",
+		Value:   &c.cliConfig.Heimdall.WSAddress,
+		Default: c.cliConfig.Heimdall.WSAddress,
+	})
 	f.BoolFlag(&flagset.BoolFlag{
 		Name:    "bor.runheimdall",
 		Usage:   "Run Heimdall service as a child process",
@@ -453,7 +459,7 @@ func (c *Command) Flags(config *Config) *flagset.Flagset {
 	})
 	f.Uint64Flag(&flagset.Uint64Flag{
 		Name:    "txlookuplimit",
-		Usage:   "Number of recent blocks to maintain transactions index for",
+		Usage:   "Number of recent blocks to maintain transactions index for (soon to be deprecated, use history.transactions instead)",
 		Value:   &c.cliConfig.Cache.TxLookupLimit,
 		Default: c.cliConfig.Cache.TxLookupLimit,
 		Group:   "Cache",
@@ -1066,6 +1072,32 @@ func (c *Command) Flags(config *Config) *flagset.Flagset {
 	// 	Value:   &c.cliConfig.Pprof.CPUProfile,
 	// 	Default: c.cliConfig.Pprof.CPUProfile,
 	// })
+
+	// Historical data retention related flags
+	f.Uint64Flag(&flagset.Uint64Flag{
+		Name:    "history.transactions",
+		Usage:   "Number of recent blocks to maintain transactions index for (default = about 2 months, 0 = entire chain)",
+		Value:   &c.cliConfig.History.TransactionHistory,
+		Default: c.cliConfig.History.TransactionHistory,
+	})
+	f.Uint64Flag(&flagset.Uint64Flag{
+		Name:    "history.logs",
+		Usage:   "Number of recent blocks to maintain log search index for (default = about 2 months, 0 = entire chain)",
+		Value:   &c.cliConfig.History.LogHistory,
+		Default: c.cliConfig.History.LogHistory,
+	})
+	f.BoolFlag(&flagset.BoolFlag{
+		Name:    "history.logs.disable",
+		Usage:   "Do not maintain log search index",
+		Value:   &c.cliConfig.History.LogNoHistory,
+		Default: c.cliConfig.History.LogNoHistory,
+	})
+	f.Uint64Flag(&flagset.Uint64Flag{
+		Name:    "history.state",
+		Usage:   "Number of recent blocks to retain state history for, only relevant in state.scheme=path (default = 90,000 blocks, 0 = entire chain)",
+		Value:   &c.cliConfig.History.StateHistory,
+		Default: c.cliConfig.History.StateHistory,
+	})
 
 	return f
 }

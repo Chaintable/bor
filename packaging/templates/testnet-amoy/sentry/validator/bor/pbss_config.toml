@@ -66,7 +66,7 @@ syncmode = "full"
 
 [miner]
     mine = true
-    gaslimit = 30000000
+    gaslimit = 45000000
     # gasprice = "25000000000"
     # etherbase = ""
     # extradata = ""
@@ -155,6 +155,12 @@ syncmode = "full"
     # txlookuplimit = 2350000
     # timeout = "1h0m0s"
     # fdlimit = 0
+
+# [history]
+#   transactions = 2350000
+#   logs = 2350000
+#   "logs.disable" = false
+#   state = 90000
 
 [accounts]
     allow-insecure-unlock = true

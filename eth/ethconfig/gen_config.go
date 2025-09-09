@@ -3,11 +3,13 @@
 package ethconfig
 
 import (
+	"encoding/json"
 	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -15,18 +17,22 @@ import (
 	"github.com/ethereum/go-ethereum/miner"
 )
 
-// MarshalTOML marshals as TOML.
-func (c Config) MarshalTOML() (interface{}, error) {
+// MarshalJSON marshals as JSON.
+func (c Config) MarshalJSON() ([]byte, error) {
 	type Config struct {
 		Genesis                              *core.Genesis `toml:",omitempty"`
 		NetworkId                            uint64
 		SyncMode                             downloader.SyncMode
+		HistoryMode                          history.HistoryMode
 		EthDiscoveryURLs                     []string
 		SnapDiscoveryURLs                    []string
 		NoPruning                            bool
 		NoPrefetch                           bool
-		TxLookupLimit                        uint64                 `toml:",omitempty"`
-		TransactionHistory                   uint64                 `toml:",omitempty"`
+		TxLookupLimit                        uint64 `toml:",omitempty"`
+		TransactionHistory                   uint64 `toml:",omitempty"`
+		LogHistory                           uint64 `toml:",omitempty"`
+		LogNoHistory                         bool   `toml:",omitempty"`
+		LogExportCheckpoints                 string
 		StateHistory                         uint64                 `toml:",omitempty"`
 		StateScheme                          string                 `toml:",omitempty"`
 		RequiredBlocks                       map[uint64]common.Hash `toml:"-"`
@@ -50,19 +56,18 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		BlobPool                             blobpool.Config
 		GPO                                  gasprice.Config
 		EnablePreimageRecording              bool
-		EnableWitnessCollection              bool `toml:"-"`
 		VMTrace                              string
 		VMTraceJsonConfig                    string
-		DocRoot                              string `toml:"-"`
 		RPCGasCap                            uint64
 		RPCReturnDataLimit                   uint64
 		RPCEVMTimeout                        time.Duration
 		RPCTxFeeCap                          float64
-		OverrideCancun                       *big.Int `toml:",omitempty"`
+		OverridePrague                       *big.Int `toml:",omitempty"`
 		HeimdallURL                          string
 		HeimdallTimeout                      time.Duration
 		WithoutHeimdall                      bool
 		HeimdallgRPCAddress                  string
+		HeimdallWSAddress                    string
 		RunHeimdall                          bool
 		RunHeimdallArgs                      string
 		UseHeimdallApp                       bool
@@ -76,12 +81,16 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.Genesis = c.Genesis
 	enc.NetworkId = c.NetworkId
 	enc.SyncMode = c.SyncMode
+	enc.HistoryMode = c.HistoryMode
 	enc.EthDiscoveryURLs = c.EthDiscoveryURLs
 	enc.SnapDiscoveryURLs = c.SnapDiscoveryURLs
 	enc.NoPruning = c.NoPruning
 	enc.NoPrefetch = c.NoPrefetch
 	enc.TxLookupLimit = c.TxLookupLimit
 	enc.TransactionHistory = c.TransactionHistory
+	enc.LogHistory = c.LogHistory
+	enc.LogNoHistory = c.LogNoHistory
+	enc.LogExportCheckpoints = c.LogExportCheckpoints
 	enc.StateHistory = c.StateHistory
 	enc.StateScheme = c.StateScheme
 	enc.RequiredBlocks = c.RequiredBlocks
@@ -107,16 +116,16 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.EnablePreimageRecording = c.EnablePreimageRecording
 	enc.VMTrace = c.VMTrace
 	enc.VMTraceJsonConfig = c.VMTraceJsonConfig
-	enc.DocRoot = c.DocRoot
 	enc.RPCGasCap = c.RPCGasCap
 	enc.RPCReturnDataLimit = c.RPCReturnDataLimit
 	enc.RPCEVMTimeout = c.RPCEVMTimeout
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
-	enc.OverrideCancun = c.OverrideCancun
+	enc.OverridePrague = c.OverridePrague
 	enc.HeimdallURL = c.HeimdallURL
 	enc.HeimdallTimeout = c.HeimdallTimeout
 	enc.WithoutHeimdall = c.WithoutHeimdall
 	enc.HeimdallgRPCAddress = c.HeimdallgRPCAddress
+	enc.HeimdallWSAddress = c.HeimdallWSAddress
 	enc.RunHeimdall = c.RunHeimdall
 	enc.RunHeimdallArgs = c.RunHeimdallArgs
 	enc.UseHeimdallApp = c.UseHeimdallApp
@@ -125,21 +134,25 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.DevFakeAuthor = c.DevFakeAuthor
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.EnableBlockTracking = c.EnableBlockTracking
-	return &enc, nil
+	return json.Marshal(&enc)
 }
 
-// UnmarshalTOML unmarshals from TOML.
-func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
+// UnmarshalJSON unmarshals from JSON.
+func (c *Config) UnmarshalJSON(input []byte) error {
 	type Config struct {
 		Genesis                              *core.Genesis `toml:",omitempty"`
 		NetworkId                            *uint64
 		SyncMode                             *downloader.SyncMode
+		HistoryMode                          *history.HistoryMode
 		EthDiscoveryURLs                     []string
 		SnapDiscoveryURLs                    []string
 		NoPruning                            *bool
 		NoPrefetch                           *bool
-		TxLookupLimit                        *uint64                `toml:",omitempty"`
-		TransactionHistory                   *uint64                `toml:",omitempty"`
+		TxLookupLimit                        *uint64 `toml:",omitempty"`
+		TransactionHistory                   *uint64 `toml:",omitempty"`
+		LogHistory                           *uint64 `toml:",omitempty"`
+		LogNoHistory                         *bool   `toml:",omitempty"`
+		LogExportCheckpoints                 *string
 		StateHistory                         *uint64                `toml:",omitempty"`
 		StateScheme                          *string                `toml:",omitempty"`
 		RequiredBlocks                       map[uint64]common.Hash `toml:"-"`
@@ -163,19 +176,18 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		BlobPool                             *blobpool.Config
 		GPO                                  *gasprice.Config
 		EnablePreimageRecording              *bool
-		EnableWitnessCollection              *bool `toml:"-"`
 		VMTrace                              *string
 		VMTraceJsonConfig                    *string
-		DocRoot                              *string `toml:"-"`
 		RPCGasCap                            *uint64
 		RPCReturnDataLimit                   *uint64
 		RPCEVMTimeout                        *time.Duration
 		RPCTxFeeCap                          *float64
-		OverrideCancun                       *big.Int `toml:",omitempty"`
+		OverridePrague                       *big.Int `toml:",omitempty"`
 		HeimdallURL                          *string
 		HeimdallTimeout                      *time.Duration
 		WithoutHeimdall                      *bool
 		HeimdallgRPCAddress                  *string
+		HeimdallWSAddress                    *string
 		RunHeimdall                          *bool
 		RunHeimdallArgs                      *string
 		UseHeimdallApp                       *bool
@@ -186,7 +198,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		EnableBlockTracking                  *bool
 	}
 	var dec Config
-	if err := unmarshal(&dec); err != nil {
+	if err := json.Unmarshal(input, &dec); err != nil {
 		return err
 	}
 	if dec.Genesis != nil {
@@ -197,6 +209,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.SyncMode != nil {
 		c.SyncMode = *dec.SyncMode
+	}
+	if dec.HistoryMode != nil {
+		c.HistoryMode = *dec.HistoryMode
 	}
 	if dec.EthDiscoveryURLs != nil {
 		c.EthDiscoveryURLs = dec.EthDiscoveryURLs
@@ -215,6 +230,15 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.TransactionHistory != nil {
 		c.TransactionHistory = *dec.TransactionHistory
+	}
+	if dec.LogHistory != nil {
+		c.LogHistory = *dec.LogHistory
+	}
+	if dec.LogNoHistory != nil {
+		c.LogNoHistory = *dec.LogNoHistory
+	}
+	if dec.LogExportCheckpoints != nil {
+		c.LogExportCheckpoints = *dec.LogExportCheckpoints
 	}
 	if dec.StateHistory != nil {
 		c.StateHistory = *dec.StateHistory
@@ -291,9 +315,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.VMTraceJsonConfig != nil {
 		c.VMTraceJsonConfig = *dec.VMTraceJsonConfig
 	}
-	if dec.DocRoot != nil {
-		c.DocRoot = *dec.DocRoot
-	}
 	if dec.RPCGasCap != nil {
 		c.RPCGasCap = *dec.RPCGasCap
 	}
@@ -306,8 +327,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.RPCTxFeeCap != nil {
 		c.RPCTxFeeCap = *dec.RPCTxFeeCap
 	}
-	if dec.OverrideCancun != nil {
-		c.OverrideCancun = dec.OverrideCancun
+	if dec.OverridePrague != nil {
+		c.OverridePrague = dec.OverridePrague
 	}
 	if dec.HeimdallURL != nil {
 		c.HeimdallURL = *dec.HeimdallURL
@@ -320,6 +341,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.HeimdallgRPCAddress != nil {
 		c.HeimdallgRPCAddress = *dec.HeimdallgRPCAddress
+	}
+	if dec.HeimdallWSAddress != nil {
+		c.HeimdallWSAddress = *dec.HeimdallWSAddress
 	}
 	if dec.RunHeimdall != nil {
 		c.RunHeimdall = *dec.RunHeimdall

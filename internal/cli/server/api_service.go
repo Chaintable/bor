@@ -3,14 +3,14 @@ package server
 import (
 	"context"
 	"errors"
+	"math"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	protobor "github.com/maticnetwork/polyproto/bor"
-	protoutil "github.com/maticnetwork/polyproto/utils"
+	protobor "github.com/0xPolygon/polyproto/bor"
+	protoutil "github.com/0xPolygon/polyproto/utils"
 )
 
 func (s *Server) GetRootHash(ctx context.Context, req *protobor.GetRootHashRequest) (*protobor.GetRootHashResponse, error) {
@@ -80,10 +80,7 @@ func blockToProtoBlock(h *types.Block) *protobor.Block {
 }
 
 func (s *Server) TransactionReceipt(ctx context.Context, req *protobor.ReceiptRequest) (*protobor.ReceiptResponse, error) {
-	_, _, blockHash, _, txnIndex, err := s.backend.APIBackend.GetTransaction(ctx, protoutil.ConvertH256ToHash(req.Hash))
-	if err != nil {
-		return nil, err
-	}
+	_, _, blockHash, _, txnIndex := s.backend.APIBackend.GetTransaction(protoutil.ConvertH256ToHash(req.Hash))
 
 	receipts, err := s.backend.APIBackend.GetReceipts(ctx, blockHash)
 	if err != nil {

@@ -17,7 +17,6 @@
 package gasprice
 
 import (
-	"context"
 	"errors"
 	"math/big"
 	"testing"
@@ -62,7 +61,7 @@ func TestFeeHistory(t *testing.T) {
 		backend := newTestBackend(t, big.NewInt(16), big.NewInt(28), c.pending)
 		oracle := NewOracle(backend, config, nil)
 
-		first, reward, baseFee, ratio, blobBaseFee, blobRatio, err := oracle.FeeHistory(context.Background(), c.count, c.last, c.percent)
+		first, reward, baseFee, ratio, blobBaseFee, blobRatio, err := oracle.FeeHistory(t.Context(), c.count, c.last, c.percent)
 		backend.teardown()
 
 		expReward := c.expCount
@@ -90,8 +89,18 @@ func TestFeeHistory(t *testing.T) {
 		if len(ratio) != c.expCount {
 			t.Fatalf("Test case %d: gasUsedRatio array length mismatch, want %d, got %d", i, c.expCount, len(ratio))
 		}
+		for _, ratio := range ratio {
+			if ratio > 1 {
+				t.Fatalf("Test case %d: gasUsedRatio greater than 1, got %f", i, ratio)
+			}
+		}
 		if len(blobRatio) != c.expCount {
 			t.Fatalf("Test case %d: blobGasUsedRatio array length mismatch, want %d, got %d", i, c.expCount, len(blobRatio))
+		}
+		for _, ratio := range blobRatio {
+			if ratio > 1 {
+				t.Fatalf("Test case %d: blobGasUsedRatio greater than 1, got %f", i, ratio)
+			}
 		}
 		if len(blobBaseFee) != len(baseFee) {
 			t.Fatalf("Test case %d: blobBaseFee array length mismatch, want %d, got %d", i, len(baseFee), len(blobBaseFee))

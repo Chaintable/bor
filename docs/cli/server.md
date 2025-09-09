@@ -8,6 +8,8 @@ The ```bor server``` command runs the Bor client.
 
 - ```bor.heimdall```: URL of Heimdall service (default: http://localhost:1317)
 
+- ```bor.heimdallWS```: Address of Heimdall ws subscription service
+
 - ```bor.heimdallgRPC```: Address of Heimdall gRPC service
 
 - ```bor.heimdalltimeout```: Timeout period for bor's outgoing requests to heimdall (default: 5s)
@@ -59,6 +61,14 @@ The ```bor server``` command runs the Bor client.
 - ```gpo.percentile```: Suggested gas price is the given percentile of a set of recent transaction gas prices (default: 60)
 
 - ```grpc.addr```: Address and port to bind the GRPC server (default: :3131)
+
+- ```history.logs```: Number of recent blocks to maintain log search index for (default = about 2 months, 0 = entire chain) (default: 2350000)
+
+- ```history.logs.disable```: Do not maintain log search index (default: false)
+
+- ```history.state```: Number of recent blocks to retain state history for, only relevant in state.scheme=path (default = 90,000 blocks, 0 = entire chain) (default: 90000)
+
+- ```history.transactions```: Number of recent blocks to maintain transactions index for (default = about 2 months, 0 = entire chain) (default: 2350000)
 
 - ```identity```: Name/Identity of the node
 
@@ -128,7 +138,7 @@ The ```bor server``` command runs the Bor client.
 
 - ```fdlimit```: Raise the open file descriptor resource limit (default = system fd limit) (default: 0)
 
-- ```txlookuplimit```: Number of recent blocks to maintain transactions index for (default: 2350000)
+- ```txlookuplimit```: Number of recent blocks to maintain transactions index for (soon to be deprecated, use history.transactions instead) (default: 2350000)
 
 ### ExtraDB Options
 
@@ -256,7 +266,7 @@ The ```bor server``` command runs the Bor client.
 
 - ```miner.extradata```: Block extra data set by the miner (default = client version)
 
-- ```miner.gaslimit```: Target gas ceiling (gas limit) for mined blocks (default: 30000000)
+- ```miner.gaslimit```: Target gas ceiling (gas limit) for mined blocks (default: 45000000)
 
 - ```miner.gasprice```: Minimum gas price for mining a transaction (default: 25000000000)
 

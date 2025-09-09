@@ -25,7 +25,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 	"go.opentelemetry.io/otel"
 
@@ -89,6 +88,11 @@ var (
 	sealedBlocksCounter      = metrics.NewRegisteredCounter("worker/sealedBlocks", nil)
 	sealedEmptyBlocksCounter = metrics.NewRegisteredCounter("worker/sealedEmptyBlocks", nil)
 	txCommitInterruptCounter = metrics.NewRegisteredCounter("worker/txCommitInterrupt", nil)
+
+	// txHeapInitTimer measures time taken to initialise a heap of pending transactions from pool
+	txHeapInitTimer = metrics.NewRegisteredTimer("worker/txheapinit", nil)
+	// commitTransactionsTimer measures time taken to execute transactions
+	commitTransactionsTimer = metrics.NewRegisteredTimer("worker/commitTransactions", nil)
 )
 
 // environment is the worker's current environment and holds all
@@ -99,6 +103,7 @@ type environment struct {
 	tcount   int            // tx count in cycle
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
+	evm      *vm.EVM
 
 	header   *types.Header
 	txs      []*types.Transaction
@@ -176,6 +181,9 @@ type newPayloadResult struct {
 	block    *types.Block
 	fees     *big.Int               // total block fees
 	sidecars []*types.BlobTxSidecar // collected blobs of blob transactions
+	stateDB  *state.StateDB         // StateDB after executing the transactions
+	receipts []*types.Receipt       // Receipts collected during construction
+	requests [][]byte               // Consensus layer requests collected during block construction
 	witness  *stateless.Witness     // Witness is an optional stateless proof
 
 }
@@ -202,6 +210,8 @@ type worker struct {
 	engine      consensus.Engine
 	eth         Backend
 	chain       *core.BlockChain
+
+	prio []common.Address // A list of senders to prioritize
 
 	// Feeds
 	pendingLogsFeed event.Feed
@@ -266,9 +276,9 @@ type worker struct {
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 
 	// Interrupt commit to stop block building on time
-	interruptCommitFlag bool // Denotes whether interrupt commit is enabled or not
-	interruptCtx        context.Context
-	interruptedTxCache  *vm.TxCache
+	interruptCommitFlag    bool        // Denotes whether interrupt commit is enabled or not
+	interruptBlockBuilding atomic.Bool // A toggle to denote whether to stop block building or not
+	mockTxDelay            uint        // A mock delay for transaction execution, only used in tests
 
 	// noempty is the flag used to control whether the feature of pre-seal empty
 	// block is enabled. The default value is false(pre-seal is enabled by default).
@@ -310,16 +320,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 
-	interruptedTxCache, err := lru.New(vm.InterruptedTxCacheSize)
-	if err != nil {
-		log.Warn("Failed to create interrupted tx cache", "err", err)
-	}
-
-	worker.interruptCtx = context.Background()
-	worker.interruptedTxCache = &vm.TxCache{
-		Cache: interruptedTxCache,
-	}
-
 	if !worker.interruptCommitFlag {
 		worker.noempty.Store(false)
 	}
@@ -359,6 +359,12 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	}
 
 	return worker
+}
+
+// setMockTxDelay sets the delay field used for inducing delay in between
+// transaction execution in tests.
+func (w *worker) setMockTxDelay(mockTxDelay uint) {
+	w.mockTxDelay = mockTxDelay
 }
 
 // setEtherbase sets the etherbase used to initialize the block coinbase field.
@@ -437,7 +443,7 @@ func (w *worker) stop() {
 	w.running.Store(false)
 }
 
-// isRunning returns an indicator whether worker is running or not.
+// IsRunning returns an indicator whether worker is running or not.
 func (w *worker) IsRunning() bool {
 	return w.running.Load()
 }
@@ -523,7 +529,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(false, commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
-			clearPending(head.Block.NumberU64())
+			clearPending(head.Header.Number.Uint64())
 
 			timestamp = time.Now().Unix()
 			commit(false, commitInterruptNewHead)
@@ -591,11 +597,13 @@ func (w *worker) mainLoop() {
 		}
 	}()
 
+	bor, isBor := w.engine.(*bor.Bor)
+	devFakeAuthor := isBor && bor != nil && bor.DevFakeAuthor
 	for {
 		select {
 		case req := <-w.newWorkCh:
 			if w.chainConfig.ChainID.Cmp(params.BorMainnetChainConfig.ChainID) == 0 || w.chainConfig.ChainID.Cmp(params.MumbaiChainConfig.ChainID) == 0 || w.chainConfig.ChainID.Cmp(params.AmoyChainConfig.ChainID) == 0 {
-				if w.eth.PeerCount() > 0 {
+				if w.eth.PeerCount() > 0 || devFakeAuthor {
 					//nolint:contextcheck
 					w.commitWork(req.interrupt, req.noempty, req.timestamp)
 				}
@@ -638,17 +646,17 @@ func (w *worker) mainLoop() {
 						BlobGas:   tx.BlobGas(),
 					})
 				}
-				plainTxs := newTransactionsByPriceAndNonce(w.current.signer, txs, w.current.header.BaseFee) // Mixed bag of everrything, yolo
-				blobTxs := newTransactionsByPriceAndNonce(w.current.signer, nil, w.current.header.BaseFee)  // Empty bag, don't bother optimising
+
+				stopFn := func() {}
+				if w.interruptCommitFlag {
+					stopFn = createInterruptTimer(w.current.header.Number.Uint64(), w.current.header.Time, &w.interruptBlockBuilding)
+				}
+
+				plainTxs := newTransactionsByPriceAndNonce(w.current.signer, txs, w.current.header.BaseFee, &w.interruptBlockBuilding) // Mixed bag of everrything, yolo
+				blobTxs := newTransactionsByPriceAndNonce(w.current.signer, nil, w.current.header.BaseFee, &w.interruptBlockBuilding)  // Empty bag, don't bother optimising
 
 				tcount := w.current.tcount
 
-				w.interruptCtx = resetAndCopyInterruptCtx(w.interruptCtx)
-				stopFn := func() {}
-				if w.interruptCommitFlag {
-					w.interruptCtx, stopFn = getInterruptTimer(w.interruptCtx, w.current.header.Number.Uint64(), w.current.header.Time)
-					w.interruptCtx = vm.PutCache(w.interruptCtx, w.interruptedTxCache)
-				}
 				w.commitTransactions(w.current, plainTxs, blobTxs, nil, new(uint256.Int))
 				stopFn()
 
@@ -748,6 +756,13 @@ func (w *worker) resultLoop() {
 			}
 			// Short circuit when receiving duplicate result caused by resubmitting.
 			if w.chain.HasBlock(block.Hash(), block.NumberU64()) {
+				continue
+			}
+
+			// Skip if the sealed block is behind current head (stale block from before reorg)
+			currentBlock := w.chain.CurrentBlock()
+			if currentBlock != nil && block.NumberU64() <= currentBlock.Number.Uint64() {
+				log.Info("Skipping stale sealed block", "sealed", block.NumberU64(), "current", currentBlock.Number.Uint64())
 				continue
 			}
 
@@ -856,6 +871,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		coinbase: coinbase,
 		header:   header,
 		witness:  state.Witness(),
+		evm:      vm.NewEVM(core.NewEVMBlockContext(header, w.chain, &coinbase), state, w.chainConfig, vm.Config{}),
 	}
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
@@ -879,6 +895,7 @@ func (w *worker) updateSnapshot(env *environment) {
 		env.receipts,
 		trie.NewStackTrie(nil),
 	)
+
 	w.snapshotReceipts = copyReceipts(env.receipts)
 	w.snapshotState = env.state.Copy()
 }
@@ -889,8 +906,7 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 		gp   = env.gasPool.Gas()
 	)
 
-	w.interruptCtx = vm.SetCurrentTxOnContext(w.interruptCtx, tx.Hash())
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, *w.chain.GetVMConfig(), w.interruptCtx)
+	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, &w.interruptBlockBuilding)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
@@ -904,6 +920,10 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 }
 
 func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transactionsByPriceAndNonce, interrupt *atomic.Int32, minTip *uint256.Int) error {
+	defer func(t0 time.Time) {
+		commitTransactionsTimer.Update(time.Since(t0))
+	}(time.Now())
+
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
@@ -953,19 +973,15 @@ mainloop:
 			}
 		}
 
-		if w.interruptCtx != nil {
-			if EnableMVHashMap && w.IsRunning() {
-				env.state.AddEmptyMVHashMap()
-			}
+		if EnableMVHashMap && w.IsRunning() {
+			env.state.AddEmptyMVHashMap()
+		}
 
-			// case of interrupting by timeout
-			select {
-			case <-w.interruptCtx.Done():
-				txCommitInterruptCounter.Inc(1)
-				log.Warn("Tx Level Interrupt", "hash", lastTxHash, "err", w.interruptCtx.Err())
-				break mainloop
-			default:
-			}
+		// Check for the flag to interrupt block building on timeout.
+		if w.interruptBlockBuilding.Load() {
+			txCommitInterruptCounter.Inc(1)
+			log.Debug("Block building interrupted due to timeout, aborting new transaction commits", "hash", lastTxHash)
+			break mainloop
 		}
 
 		// If we don't have enough gas for any further transactions then we're done.
@@ -975,7 +991,7 @@ mainloop:
 		}
 		// If we don't have enough blob space for any further blob transactions,
 		// skip that list altogether
-		if !blobTxs.Empty() && env.blobs*params.BlobTxBlobGasPerBlob >= params.MaxBlobGasPerBlock {
+		if !blobTxs.Empty() && env.blobs >= eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time) {
 			log.Trace("Not enough blob space for further blob transactions")
 			blobTxs.Clear()
 			// Fall though to pick up any plain txs
@@ -1011,11 +1027,7 @@ mainloop:
 			txs.Pop()
 			continue
 		}
-		if left := uint64(params.MaxBlobGasPerBlock - env.blobs*params.BlobTxBlobGasPerBlob); left < ltx.BlobGas {
-			log.Trace("Not enough blob gas left for transaction", "hash", ltx.Hash, "left", left, "needed", ltx.BlobGas)
-			txs.Pop()
-			continue
-		}
+
 		// If we don't receive enough tip for the next transaction, skip the account
 		if ptip.Cmp(minTip) < 0 {
 			log.Trace("Not enough tip for transaction", "hash", ltx.Hash, "tip", ptip, "needed", minTip)
@@ -1028,6 +1040,7 @@ mainloop:
 			txs.Pop()
 			continue
 		}
+
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance in the transaction pool.
 		from, _ := types.Sender(env.signer, tx)
@@ -1069,13 +1082,8 @@ mainloop:
 
 		logs, err := w.commitTransaction(env, tx)
 
-		// Check if we have a `delay` set in interrupt context. It's only set during tests.
-		if w.interruptCtx != nil {
-			if delay := w.interruptCtx.Value(vm.InterruptCtxDelayKey); delay != nil {
-				// nolint : durationcheck
-				time.Sleep(time.Duration(delay.(uint)) * time.Millisecond)
-			}
-		}
+		// Set mock delay (if any) between transactions for tests
+		time.Sleep(time.Duration(w.mockTxDelay) * time.Millisecond)
 
 		switch {
 		case errors.Is(err, core.ErrNonceTooLow):
@@ -1094,6 +1102,7 @@ mainloop:
 
 				if env.tcount > len(env.depsMVFullWriteList) {
 					log.Warn("blockstm - env.tcount > len(env.depsMVFullWriteList)", "env.tcount", env.tcount, "len(depsMVFullWriteList)", len(env.depsMVFullWriteList))
+					return errors.New("transaction count exceeds dependency list length")
 				}
 
 				temp := blockstm.TxDep{
@@ -1102,7 +1111,20 @@ mainloop:
 					FullWriteList: env.depsMVFullWriteList,
 				}
 
-				chDeps <- temp
+				// Send with timeout to prevent deadlock
+				select {
+				case chDeps <- temp:
+					// Successfully sent
+				case <-time.After(1 * time.Second):
+					// Timeout after 1 second - channel is blocked
+					log.Error("Transaction dependency channel blocked, aborting block building",
+						"txIndex", env.tcount-1,
+						"blockNumber", env.header.Number.Uint64())
+					once.Do(func() {
+						close(chDeps)
+					})
+					return errors.New("dependency channel timeout")
+				}
 			}
 
 			txs.Shift()
@@ -1293,13 +1315,14 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 	}
 	if header.ParentBeaconRoot != nil {
 		context := core.NewEVMBlockContext(header, w.chain, nil)
-		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
-		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv, env.state)
+		vmenv := vm.NewEVM(context, env.state, w.chainConfig, vm.Config{})
+		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv)
 	}
 	if w.chainConfig.IsPrague(header.Number) {
+		// EIP-2935
 		context := core.NewEVMBlockContext(header, w.chain, nil)
-		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
-		core.ProcessParentBlockHash(header.ParentHash, vmenv, env.state)
+		vmenv := vm.NewEVM(context, env.state, w.chainConfig, vm.Config{})
+		core.ProcessParentBlockHash(header.ParentHash, vmenv)
 	}
 	return env, nil
 }
@@ -1313,6 +1336,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) error {
 	w.mu.RLock()
 	tip := w.tip
+	prio := w.prio
 	w.mu.RUnlock()
 
 	// Retrieve the pending transactions pre-filtered by the 1559/4844 dynamic fees
@@ -1324,52 +1348,41 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 		filter.BaseFee = uint256.MustFromBig(env.header.BaseFee)
 	}
 
-	if env.header.ExcessBlobGas != nil {
-		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(*env.header.ExcessBlobGas))
-	}
-
-	var (
-		localPlainTxs, remotePlainTxs, localBlobTxs, remoteBlobTxs map[common.Address][]*txpool.LazyTransaction
-	)
-
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
-	pendingPlainTxs := w.eth.TxPool().Pending(filter)
+	pendingPlainTxs := w.eth.TxPool().Pending(filter, &w.interruptBlockBuilding)
 
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
-	pendingBlobTxs := w.eth.TxPool().Pending(filter)
+	pendingBlobTxs := w.eth.TxPool().Pending(filter, &w.interruptBlockBuilding)
 
 	// Split the pending transactions into locals and remotes.
-	localPlainTxs, remotePlainTxs = make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
-	localBlobTxs, remoteBlobTxs = make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
+	prioPlainTxs, normalPlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
+	prioBlobTxs, normalBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
 
-	for _, account := range w.eth.TxPool().Locals() {
-		if txs := remotePlainTxs[account]; len(txs) > 0 {
-			delete(remotePlainTxs, account)
-			localPlainTxs[account] = txs
+	for _, account := range prio {
+		if txs := normalPlainTxs[account]; len(txs) > 0 {
+			delete(normalPlainTxs, account)
+			prioPlainTxs[account] = txs
 		}
-		if txs := remoteBlobTxs[account]; len(txs) > 0 {
-			delete(remoteBlobTxs, account)
-			localBlobTxs[account] = txs
+		if txs := normalBlobTxs[account]; len(txs) > 0 {
+			delete(normalBlobTxs, account)
+			prioBlobTxs[account] = txs
 		}
 	}
 
 	// Fill the block with all available pending transactions.
-	if len(localPlainTxs) > 0 || len(localBlobTxs) > 0 {
-		var plainTxs, blobTxs *transactionsByPriceAndNonce
-
-		plainTxs = newTransactionsByPriceAndNonce(env.signer, localPlainTxs, env.header.BaseFee)
-		blobTxs = newTransactionsByPriceAndNonce(env.signer, localBlobTxs, env.header.BaseFee)
+	if len(prioPlainTxs) > 0 || len(prioBlobTxs) > 0 {
+		plainTxs := newTransactionsByPriceAndNonce(env.signer, prioPlainTxs, env.header.BaseFee, &w.interruptBlockBuilding)
+		blobTxs := newTransactionsByPriceAndNonce(env.signer, prioBlobTxs, env.header.BaseFee, &w.interruptBlockBuilding)
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interrupt, new(uint256.Int)); err != nil {
 			return err
 		}
 	}
-
-	if len(remotePlainTxs) > 0 || len(remoteBlobTxs) > 0 {
-		var plainTxs, blobTxs *transactionsByPriceAndNonce
-
-		plainTxs = newTransactionsByPriceAndNonce(env.signer, remotePlainTxs, env.header.BaseFee)
-		blobTxs = newTransactionsByPriceAndNonce(env.signer, remoteBlobTxs, env.header.BaseFee)
+	if len(normalPlainTxs) > 0 || len(normalBlobTxs) > 0 {
+		heapInitTime := time.Now()
+		plainTxs := newTransactionsByPriceAndNonce(env.signer, normalPlainTxs, env.header.BaseFee, &w.interruptBlockBuilding)
+		blobTxs := newTransactionsByPriceAndNonce(env.signer, normalBlobTxs, env.header.BaseFee, &w.interruptBlockBuilding)
+		txHeapInitTimer.Update(time.Since(heapInitTime))
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interrupt, new(uint256.Int)); err != nil {
 			return err
@@ -1387,7 +1400,6 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 	defer work.discard()
 
-	w.interruptCtx = resetAndCopyInterruptCtx(w.interruptCtx)
 	if !params.noTxs {
 		interrupt := new(atomic.Int32)
 
@@ -1407,13 +1419,27 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	for _, r := range work.receipts {
 		allLogs = append(allLogs, r.Logs...)
 	}
-	// Read requests if Prague is enabled.
+
+	// Polygon/bor: EIP-6110, EIP-7002, and EIP-7251 are not supported
+	// Collect consensus-layer requests if Prague is enabled and bor consensus is not active.
+	var requests [][]byte
 	if w.chainConfig.IsPrague(work.header.Number) && w.chainConfig.Bor == nil {
-		requests, err := core.ParseDepositLogs(allLogs, w.chainConfig)
+		// EIP-6110 deposits
+		err := core.ParseDepositLogs(&requests, allLogs, w.chainConfig)
 		if err != nil {
 			return &newPayloadResult{err: err}
 		}
-		body.Requests = requests
+		// create EVM for system calls
+		blockContext := core.NewEVMBlockContext(work.header, w.chain, &work.header.Coinbase)
+		vmenv := vm.NewEVM(blockContext, work.state, w.chainConfig, vm.Config{})
+		// EIP-7002 withdrawals
+		core.ProcessWithdrawalQueue(&requests, vmenv)
+		// EIP-7251 consolidations
+		core.ProcessConsolidationQueue(&requests, vmenv)
+	}
+	if requests != nil {
+		reqHash := types.CalcRequestsHash(requests)
+		work.header.RequestsHash = &reqHash
 	}
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
 
@@ -1424,7 +1450,9 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 		block:    block,
 		fees:     totalFees(block, work.receipts),
 		sidecars: work.sidecars,
-		witness:  work.witness,
+		stateDB:  work.state,
+		receipts: work.receipts,
+		requests: requests,
 	}
 }
 
@@ -1461,15 +1489,14 @@ func (w *worker) commitWork(interrupt *atomic.Int32, noempty bool, timestamp int
 		return
 	}
 
-	w.interruptCtx = resetAndCopyInterruptCtx(w.interruptCtx)
 	stopFn := func() {}
 	defer func() {
 		stopFn()
 	}()
 
 	if !noempty && w.interruptCommitFlag {
-		w.interruptCtx, stopFn = getInterruptTimer(w.interruptCtx, work.header.Number.Uint64(), work.header.Time)
-		w.interruptCtx = vm.PutCache(w.interruptCtx, w.interruptedTxCache)
+		// Start the timer for block building
+		stopFn = createInterruptTimer(work.header.Number.Uint64(), work.header.Time, &w.interruptBlockBuilding)
 	}
 
 	// Create an empty block based on temporary copied state for
@@ -1520,35 +1547,30 @@ func (w *worker) commitWork(interrupt *atomic.Int32, noempty bool, timestamp int
 	w.current = work
 }
 
-// resetAndCopyInterruptCtx resets the interrupt context and copies the values set
-// from the old one to newly created one. It is necessary to reset context in this way
-// to get rid of the older parent timeout context.
-func resetAndCopyInterruptCtx(interruptCtx context.Context) context.Context {
-	// Create a fresh new context and copy values from old one
-	newCtx := context.Background()
-	if delay := interruptCtx.Value(vm.InterruptCtxDelayKey); delay != nil {
-		newCtx = context.WithValue(newCtx, vm.InterruptCtxDelayKey, delay)
-	}
-	if opcodeDelay := interruptCtx.Value(vm.InterruptCtxOpcodeDelayKey); opcodeDelay != nil {
-		newCtx = context.WithValue(newCtx, vm.InterruptCtxOpcodeDelayKey, opcodeDelay)
-	}
-
-	return newCtx
-}
-
-func getInterruptTimer(interruptCtx context.Context, number, timestamp uint64) (context.Context, func()) {
+// createInterruptTimer creates and starts a timer based on the header's timestamp for block building
+// and toggles the flag when the timer expires.
+func createInterruptTimer(number, timestamp uint64, interruptBlockBuilding *atomic.Bool) func() {
 	delay := time.Until(time.Unix(int64(timestamp), 0))
-	interruptCtx, cancel := context.WithTimeout(interruptCtx, delay)
+	interruptCtx, cancel := context.WithTimeout(context.Background(), delay)
+
+	// Reset the flag when timer starts for building a new block.
+	interruptBlockBuilding.Store(false)
 
 	go func() {
+		// Wait for timeout
 		<-interruptCtx.Done()
+
+		// Toggle the flag to indicate commit transactions loop and EVM interpreter loop
+		// to stop block building.
+		interruptBlockBuilding.Store(true)
+
 		if interruptCtx.Err() != context.Canceled {
-			log.Info("Commit Interrupt. Pre-committing the current block", "block", number)
+			log.Info("Block building interrupted due to timeout", "block", number)
 			cancel()
 		}
 	}()
 
-	return interruptCtx, cancel
+	return cancel
 }
 
 // commit runs any post-transaction state modifications, assembles the final block
@@ -1620,12 +1642,6 @@ func (w *worker) adjustResubmitInterval(message *intervalAdjust) {
 	}
 }
 
-// setInterruptCtx sets `value` for given `key` for interrupt commit logic. To be only
-// used for e2e unit tests.
-func (w *worker) setInterruptCtx(key any, value any) {
-	w.interruptCtx = context.WithValue(w.interruptCtx, key, value)
-}
-
 // copyReceipts makes a deep copy of the given receipts.
 func copyReceipts(receipts []*types.Receipt) []*types.Receipt {
 	result := make([]*types.Receipt, len(receipts))
@@ -1645,6 +1661,7 @@ func totalFees(block *types.Block, receipts []*types.Receipt) *big.Int {
 	for i, tx := range block.Transactions() {
 		minerFee, _ := tx.EffectiveGasTip(block.BaseFee())
 		feesWei.Add(feesWei, new(big.Int).Mul(new(big.Int).SetUint64(receipts[i].GasUsed), minerFee))
+		// TODO (MariusVanDerWijden) add blob fees
 	}
 
 	return feesWei

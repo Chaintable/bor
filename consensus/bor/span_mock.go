@@ -8,12 +8,13 @@ import (
 	context "context"
 	reflect "reflect"
 
+	borTypes "github.com/0xPolygon/heimdall-v2/x/bor/types"
+	types "github.com/0xPolygon/heimdall-v2/x/stake/types"
 	common "github.com/ethereum/go-ethereum/common"
-	span "github.com/ethereum/go-ethereum/consensus/bor/heimdall/span"
 	valset "github.com/ethereum/go-ethereum/consensus/bor/valset"
 	core "github.com/ethereum/go-ethereum/core"
-	state "github.com/ethereum/go-ethereum/core/state"
-	types "github.com/ethereum/go-ethereum/core/types"
+	types0 "github.com/ethereum/go-ethereum/core/types"
+	vm "github.com/ethereum/go-ethereum/core/vm"
 	rpc "github.com/ethereum/go-ethereum/rpc"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -42,24 +43,24 @@ func (m *MockSpanner) EXPECT() *MockSpannerMockRecorder {
 }
 
 // CommitSpan mocks base method.
-func (m *MockSpanner) CommitSpan(arg0 context.Context, arg1 span.HeimdallSpan, arg2 *state.StateDB, arg3 *types.Header, arg4 core.ChainContext) error {
+func (m *MockSpanner) CommitSpan(arg0 context.Context, arg1 borTypes.Span, arg2, arg3 []types.MinimalVal, arg4 vm.StateDB, arg5 *types0.Header, arg6 core.ChainContext) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CommitSpan", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "CommitSpan", arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CommitSpan indicates an expected call of CommitSpan.
-func (mr *MockSpannerMockRecorder) CommitSpan(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockSpannerMockRecorder) CommitSpan(arg0, arg1, arg2, arg3, arg4, arg5, arg6 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitSpan", reflect.TypeOf((*MockSpanner)(nil).CommitSpan), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitSpan", reflect.TypeOf((*MockSpanner)(nil).CommitSpan), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 }
 
 // GetCurrentSpan mocks base method.
-func (m *MockSpanner) GetCurrentSpan(arg0 context.Context, arg1 common.Hash) (*span.Span, error) {
+func (m *MockSpanner) GetCurrentSpan(arg0 context.Context, arg1 common.Hash) (*borTypes.Span, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCurrentSpan", arg0, arg1)
-	ret0, _ := ret[0].(*span.Span)
+	ret0, _ := ret[0].(*borTypes.Span)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

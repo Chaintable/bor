@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/internal/cli/server/chains"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -143,8 +144,26 @@ type Config struct {
 	// Pprof has the pprof related settings
 	Pprof *PprofConfig `hcl:"pprof,block" toml:"pprof,block"`
 
+	// HistoryConfig has historical data retention related settings
+	History *HistoryConfig `hcl:"history,block" toml:"history,block"`
+
 	// VmTrace has the vm trace related settings
 	VmTrace VmTraceConfig `hcl:"vmtrace,optional" toml:"vmtrace,optional"`
+}
+
+type HistoryConfig struct {
+	// TransactionHistory denotes the maximum number of blocks from head whose tx indices are reserved.
+	TransactionHistory uint64 `hcl:"transactions,block" toml:"transactions,block"`
+
+	// LogHistory denotes the maximum number of blocks from head where a log search index is maintained.
+	LogHistory uint64 `hcl:"logs,block" toml:"logs,block"`
+
+	// LogNoHistory denotes whether log search index is maintained or not.
+	LogNoHistory bool `hcl:"logs.disable,block" toml:"logs.disable,block"`
+
+	// StateHistory denotes number of recent blocks to retain state history for (only relevant
+	// in state.scheme=path)
+	StateHistory uint64 `hcl:"state,block" toml:"state,block"`
 }
 
 type LoggingConfig struct {
@@ -268,6 +287,9 @@ type HeimdallConfig struct {
 
 	// GRPCAddress is the address of the heimdall grpc server
 	GRPCAddress string `hcl:"grpc-address,optional" toml:"grpc-address,optional"`
+
+	// WSAddress is the address of the heimdall ws subscription server
+	WSAddress string `hcl:"ws-address,optional" toml:"ws-address,optional"`
 
 	// RunHeimdall is used to run heimdall as a child process
 	RunHeimdall bool `hcl:"bor.runheimdall,optional" toml:"bor.runheimdall,optional"`
@@ -662,6 +684,7 @@ func DefaultConfig() *Config {
 			Timeout:     5 * time.Second,
 			Without:     false,
 			GRPCAddress: "",
+			WSAddress:   "",
 		},
 		SyncMode:    "full",
 		GcMode:      "full",
@@ -684,7 +707,7 @@ func DefaultConfig() *Config {
 		Sealer: &SealerConfig{
 			Enabled:             false,
 			Etherbase:           "",
-			GasCeil:             30_000_000,                                 // geth's default
+			GasCeil:             miner.DefaultConfig.GasCeil,
 			GasPrice:            big.NewInt(params.BorDefaultMinerGasPrice), // bor's default
 			ExtraData:           "",
 			Recommit:            125 * time.Second,
@@ -813,6 +836,12 @@ func DefaultConfig() *Config {
 			Enable:               true,
 			SpeculativeProcesses: 8,
 			Enforce:              false,
+		},
+		History: &HistoryConfig{
+			TransactionHistory: ethconfig.Defaults.TransactionHistory,
+			LogHistory:         ethconfig.Defaults.LogHistory,
+			LogNoHistory:       ethconfig.Defaults.LogNoHistory,
+			StateHistory:       params.FullImmutabilityThreshold,
 		},
 	}
 }
@@ -949,6 +978,7 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 	n.HeimdallTimeout = c.Heimdall.Timeout
 	n.WithoutHeimdall = c.Heimdall.Without
 	n.HeimdallgRPCAddress = c.Heimdall.GRPCAddress
+	n.HeimdallWSAddress = c.Heimdall.WSAddress
 	n.RunHeimdall = c.Heimdall.RunHeimdall
 	n.RunHeimdallArgs = c.Heimdall.RunHeimdallArgs
 	n.UseHeimdallApp = c.Heimdall.UseHeimdallApp
@@ -1138,10 +1168,20 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 		n.TrieDirtyCache = calcPerc(c.Cache.PercGc)
 		n.NoPrefetch = c.Cache.NoPrefetch
 		n.Preimages = c.Cache.Preimages
+		// Note that even the values set by `history.transactions` will be written in the old flag until it's removed.
 		n.TransactionHistory = c.Cache.TxLookupLimit
 		n.TrieTimeout = c.Cache.TrieTimeout
 		n.TriesInMemory = c.Cache.TriesInMemory
 		n.FilterLogCacheSize = c.Cache.FilterLogCacheSize
+	}
+
+	// History
+	{
+		// TODO: uncomment this when txlookuplimit is completely removed
+		// n.TransactionHistory = c.History.TransactionHistory
+		n.LogHistory = c.History.LogHistory
+		n.LogNoHistory = c.History.LogNoHistory
+		n.StateHistory = c.History.StateHistory
 	}
 
 	// LevelDB
@@ -1163,16 +1203,13 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 
 	n.RPCTxFeeCap = c.JsonRPC.TxFeeCap
 
-	// sync mode. It can either be "fast", "full" or "snap". We disable
-	// for now the "light" mode.
+	// Choose the sync mode. Only "full" sync is supported
 	switch c.SyncMode {
 	case "full":
 		n.SyncMode = downloader.FullSync
 	case "snap":
-		// n.SyncMode = downloader.SnapSync // TODO(snap): Uncomment when we have snap sync working
+		log.Info("Snap sync is momentarily disabled in bor, switching to full sync")
 		n.SyncMode = downloader.FullSync
-
-		log.Warn("Bor doesn't support Snap Sync yet, switching to Full Sync mode")
 	default:
 		return nil, fmt.Errorf("sync mode '%s' not found", c.SyncMode)
 	}

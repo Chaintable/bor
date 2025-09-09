@@ -40,6 +40,8 @@ type sigCache struct {
 func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint64) Signer {
 	var signer Signer
 	switch {
+	case config.IsPrague(blockNumber):
+		signer = NewPragueSigner(config.ChainID)
 	case config.IsCancun(blockNumber):
 		signer = NewCancunSigner(config.ChainID)
 	case config.IsLondon(blockNumber):
@@ -67,6 +69,8 @@ func LatestSigner(config *params.ChainConfig) Signer {
 	var signer Signer
 	if config.ChainID != nil {
 		switch {
+		case config.PragueBlock != nil:
+			signer = NewPragueSigner(config.ChainID)
 		case config.CancunBlock != nil:
 			signer = NewCancunSigner(config.ChainID)
 		case config.LondonBlock != nil:
@@ -94,7 +98,7 @@ func LatestSigner(config *params.ChainConfig) Signer {
 func LatestSignerForChainID(chainID *big.Int) Signer {
 	var signer Signer
 	if chainID != nil {
-		signer = NewCancunSigner(chainID)
+		signer = NewPragueSigner(chainID)
 	} else {
 		signer = HomesteadSigner{}
 	}
@@ -174,6 +178,64 @@ type Signer interface {
 	Equal(Signer) bool
 }
 
+type pragueSigner struct{ cancunSigner }
+
+// NewPragueSigner returns a signer that accepts
+// - EIP-7702 set code transactions
+// - EIP-4844 blob transactions
+// - EIP-1559 dynamic fee transactions
+// - EIP-2930 access list transactions,
+// - EIP-155 replay protected transactions, and
+// - legacy Homestead transactions.
+func NewPragueSigner(chainId *big.Int) Signer {
+	signer, _ := NewCancunSigner(chainId).(cancunSigner)
+	return pragueSigner{signer}
+}
+
+func (s pragueSigner) Sender(tx *Transaction) (common.Address, error) {
+	if tx.Type() != SetCodeTxType {
+		return s.cancunSigner.Sender(tx)
+	}
+	V, R, S := tx.RawSignatureValues()
+
+	// Set code txs are defined to use 0 and 1 as their recovery
+	// id, add 27 to become equivalent to unprotected Homestead signatures.
+	V = new(big.Int).Add(V, big.NewInt(27))
+	if tx.ChainId().Cmp(s.chainId) != 0 {
+		return common.Address{}, fmt.Errorf("%w: have %d want %d", ErrInvalidChainId, tx.ChainId(), s.chainId)
+	}
+	return recoverPlain(s.Hash(tx), R, S, V, true)
+}
+
+func (s pragueSigner) Equal(s2 Signer) bool {
+	x, ok := s2.(pragueSigner)
+	return ok && x.chainId.Cmp(s.chainId) == 0
+}
+
+func (s pragueSigner) SignatureValues(tx *Transaction, sig []byte) (R, S, V *big.Int, err error) {
+	txdata, ok := tx.inner.(*SetCodeTx)
+	if !ok {
+		return s.cancunSigner.SignatureValues(tx, sig)
+	}
+	// Check that chain ID of tx matches the signer. We also accept ID zero here,
+	// because it indicates that the chain ID was not specified in the tx.
+	if txdata.ChainID.Sign() != 0 && txdata.ChainID.CmpBig(s.chainId) != 0 {
+		return nil, nil, nil, fmt.Errorf("%w: have %d want %d", ErrInvalidChainId, txdata.ChainID, s.chainId)
+	}
+	R, S, _ = decodeSignature(sig)
+	V = big.NewInt(int64(sig[64]))
+	return R, S, V, nil
+}
+
+// Hash returns the hash to be signed by the sender.
+// It does not uniquely identify the transaction.
+func (s pragueSigner) Hash(tx *Transaction) common.Hash {
+	if tx.Type() != SetCodeTxType {
+		return s.cancunSigner.Hash(tx)
+	}
+	return tx.inner.sigHash(s.chainId)
+}
+
 type cancunSigner struct{ londonSigner }
 
 // NewCancunSigner returns a signer that accepts
@@ -212,7 +274,7 @@ func (s cancunSigner) SignatureValues(tx *Transaction, sig []byte) (R, S, V *big
 	}
 	// Check that chain ID of tx matches the signer. We also accept ID zero here,
 	// because it indicates that the chain ID was not specified in the tx.
-	if txdata.ChainID.Sign() != 0 && txdata.ChainID.ToBig().Cmp(s.chainId) != 0 {
+	if txdata.ChainID.Sign() != 0 && txdata.ChainID.CmpBig(s.chainId) != 0 {
 		return nil, nil, nil, fmt.Errorf("%w: have %d want %d", ErrInvalidChainId, txdata.ChainID, s.chainId)
 	}
 	R, S, _ = decodeSignature(sig)
@@ -226,21 +288,7 @@ func (s cancunSigner) Hash(tx *Transaction) common.Hash {
 	if tx.Type() != BlobTxType {
 		return s.londonSigner.Hash(tx)
 	}
-	return prefixedRlpHash(
-		tx.Type(),
-		[]interface{}{
-			s.chainId,
-			tx.Nonce(),
-			tx.GasTipCap(),
-			tx.GasFeeCap(),
-			tx.Gas(),
-			tx.To(),
-			tx.Value(),
-			tx.Data(),
-			tx.AccessList(),
-			tx.BlobGasFeeCap(),
-			tx.BlobHashes(),
-		})
+	return tx.inner.sigHash(s.chainId)
 }
 
 type londonSigner struct{ eip2930Signer }
@@ -294,19 +342,7 @@ func (s londonSigner) Hash(tx *Transaction) common.Hash {
 	if tx.Type() != DynamicFeeTxType {
 		return s.eip2930Signer.Hash(tx)
 	}
-	return prefixedRlpHash(
-		tx.Type(),
-		[]interface{}{
-			s.chainId,
-			tx.Nonce(),
-			tx.GasTipCap(),
-			tx.GasFeeCap(),
-			tx.Gas(),
-			tx.To(),
-			tx.Value(),
-			tx.Data(),
-			tx.AccessList(),
-		})
+	return tx.inner.sigHash(s.chainId)
 }
 
 type eip2930Signer struct{ EIP155Signer }
@@ -369,18 +405,7 @@ func (s eip2930Signer) Hash(tx *Transaction) common.Hash {
 	case LegacyTxType:
 		return s.EIP155Signer.Hash(tx)
 	case AccessListTxType:
-		return prefixedRlpHash(
-			tx.Type(),
-			[]interface{}{
-				s.chainId,
-				tx.Nonce(),
-				tx.GasPrice(),
-				tx.Gas(),
-				tx.To(),
-				tx.Value(),
-				tx.Data(),
-				tx.AccessList(),
-			})
+		return tx.inner.sigHash(s.chainId)
 	default:
 		// This _should_ not happen, but in case someone sends in a bad
 		// json struct via RPC, it's probably more prudent to return an
@@ -450,15 +475,7 @@ func (s EIP155Signer) SignatureValues(tx *Transaction, sig []byte) (R, S, V *big
 // Hash returns the hash to be signed by the sender.
 // It does not uniquely identify the transaction.
 func (s EIP155Signer) Hash(tx *Transaction) common.Hash {
-	return rlpHash([]interface{}{
-		tx.Nonce(),
-		tx.GasPrice(),
-		tx.Gas(),
-		tx.To(),
-		tx.Value(),
-		tx.Data(),
-		s.chainId, uint(0), uint(0),
-	})
+	return tx.inner.sigHash(s.chainId)
 }
 
 // HomesteadSigner implements Signer interface using the
@@ -522,7 +539,7 @@ func (fs FrontierSigner) SignatureValues(tx *Transaction, sig []byte) (r, s, v *
 // Hash returns the hash to be signed by the sender.
 // It does not uniquely identify the transaction.
 func (fs FrontierSigner) Hash(tx *Transaction) common.Hash {
-	return rlpHash([]interface{}{
+	return rlpHash([]any{
 		tx.Nonce(),
 		tx.GasPrice(),
 		tx.Gas(),
@@ -583,32 +600,32 @@ func deriveChainId(v *big.Int) *big.Int {
 }
 
 // FakeSigner implements the Signer interface and accepts unprotected transactions
-type FakeSigner struct{ londonSigner }
+type FakeSigner struct{ pragueSigner }
 
 var _ Signer = FakeSigner{}
 
 func NewFakeSigner(chainId *big.Int) Signer {
-	signer := NewLondonSigner(chainId)
-	ls, _ := signer.(londonSigner)
-	return FakeSigner{londonSigner: ls}
+	signer := NewPragueSigner(chainId)
+	ps, _ := signer.(pragueSigner)
+	return FakeSigner{pragueSigner: ps}
 }
 
 func (f FakeSigner) Sender(tx *Transaction) (common.Address, error) {
-	return f.londonSigner.Sender(tx)
+	return f.pragueSigner.Sender(tx)
 }
 
 func (f FakeSigner) SignatureValues(tx *Transaction, sig []byte) (r, s, v *big.Int, err error) {
-	return f.londonSigner.SignatureValues(tx, sig)
+	return f.pragueSigner.SignatureValues(tx, sig)
 }
 
 func (f FakeSigner) ChainID() *big.Int {
-	return f.londonSigner.ChainID()
+	return f.pragueSigner.ChainID()
 }
 
 // Hash returns 'signature hash', i.e. the transaction hash that is signed by the
 // private key. This hash does not uniquely identify the transaction.
 func (f FakeSigner) Hash(tx *Transaction) common.Hash {
-	return f.londonSigner.Hash(tx)
+	return f.pragueSigner.Hash(tx)
 }
 
 // Equal returns true if the given signer is the same as the receiver.
