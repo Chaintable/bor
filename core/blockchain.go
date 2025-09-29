@@ -31,8 +31,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/debank/tracer"
-	ptypes "github.com/ethereum/go-ethereum/debank/types"
+	"github.com/Chaintable/pipeline/tracer"
+	dtypes "github.com/Chaintable/pipeline/types"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -2009,12 +2009,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 }
 
 // 返回两个块的共同祖先，以及两个块的从共同祖先到两个块的路径,即drop和new
-func (bc *BlockChain) getCommonAncestor(blocka ptypes.BlockContext, blockb ptypes.BlockContext) (ptypes.BlockContext, []ptypes.BlockContext, []ptypes.BlockContext) {
+func (bc *BlockChain) getCommonAncestor(blocka dtypes.BlockContext, blockb dtypes.BlockContext) (dtypes.BlockContext, []dtypes.BlockContext, []dtypes.BlockContext) {
 	var (
-		chainA, chainB []ptypes.BlockContext
+		chainA, chainB []dtypes.BlockContext
 	)
 	if blockb.ParentHash == blocka.Hash {
-		return blocka, chainA, []ptypes.BlockContext{blockb}
+		return blocka, chainA, []dtypes.BlockContext{blockb}
 	}
 	for blockb.BlockNumber > blocka.BlockNumber {
 		chainB = append(chainB, blockb)
@@ -2022,7 +2022,7 @@ func (bc *BlockChain) getCommonAncestor(blocka ptypes.BlockContext, blockb ptype
 		if headerb == nil {
 			log.Crit("Failed to get header by hash", "hash", blockb.ParentHash)
 		} else {
-			blockb = ptypes.BlockContext{
+			blockb = dtypes.BlockContext{
 				BlockNumber: headerb.Number.Uint64(),
 				Hash:        headerb.Hash(),
 				ParentHash:  headerb.ParentHash,
@@ -2036,7 +2036,7 @@ func (bc *BlockChain) getCommonAncestor(blocka ptypes.BlockContext, blockb ptype
 		if headera == nil {
 			log.Crit("Failed to get header by hash", "hash", blocka.ParentHash)
 		} else {
-			blocka = ptypes.BlockContext{
+			blocka = dtypes.BlockContext{
 				BlockNumber: headera.Number.Uint64(),
 				Hash:        headera.Hash(),
 				ParentHash:  headera.ParentHash,
@@ -2049,7 +2049,7 @@ func (bc *BlockChain) getCommonAncestor(blocka ptypes.BlockContext, blockb ptype
 		if headerb == nil {
 			log.Crit("Failed to get header by hash", "hash", blockb.ParentHash)
 		} else {
-			blockb = ptypes.BlockContext{
+			blockb = dtypes.BlockContext{
 				BlockNumber: headerb.Number.Uint64(),
 				Hash:        headerb.Hash(),
 				ParentHash:  headerb.ParentHash,
@@ -2151,21 +2151,21 @@ func (bc *BlockChain) pushBlockChange(block *types.Block) {
 	// 上一个push kafka的block比当前的head block还要新，说明有unwind回退，不需要处理, 即使是fork，等有更新的block的时候再一起push
 	if tracer.NodeXPusher != nil && tracer.NodeXPusher.LastPushedBlock().BlockNumber <= block.NumberU64() {
 		lastPushBlock := tracer.NodeXPusher.LastPushedBlock()
-		_, dropBlocks, newBlocks := bc.getCommonAncestor(*lastPushBlock, ptypes.BlockContext{
+		_, dropBlocks, newBlocks := bc.getCommonAncestor(*lastPushBlock, dtypes.BlockContext{
 			BlockNumber: block.NumberU64(),
 			Hash:        block.Hash(),
 			ParentHash:  block.ParentHash(),
 			Timestamp:   block.Time(),
 		})
-		var blockChange *ptypes.BlockChangeNotification
+		var blockChange *dtypes.BlockChangeNotification
 		if len(dropBlocks) > 0 {
-			blockChange = &ptypes.BlockChangeNotification{
+			blockChange = &dtypes.BlockChangeNotification{
 				ChangeType: 2,
 				NewBlocks:  newBlocks,
 				DropBlocks: dropBlocks,
 			}
 		} else if len(newBlocks) > 0 {
-			blockChange = &ptypes.BlockChangeNotification{
+			blockChange = &dtypes.BlockChangeNotification{
 				ChangeType: 1,
 				NewBlocks:  newBlocks,
 			}
