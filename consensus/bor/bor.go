@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/debank/tracer"
+	"github.com/ethereum/go-ethereum/eth/tracers/live"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
@@ -1402,7 +1402,7 @@ func (c *Bor) CommitStates(
 	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(header.Number.Uint64(), header.Hash()))
 	if c.tracer != nil {
 		stateReceiverContract := common.HexToAddress(c.config.StateReceiverContract)
-		vmConfig = &vm.Config{Tracer: tracer.NewBorStateSyncTxnTracer(c.tracer, stateReceiverContract)}
+		vmConfig = &vm.Config{Tracer: live.NewBorStateSyncTxnTracer(c.tracer, stateReceiverContract)}
 	}
 	if totalStateSyncData > 0 {
 		if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnBorTxStart != nil {
