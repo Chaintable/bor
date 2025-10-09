@@ -39,6 +39,10 @@ func NewBorTransaction() *Transaction {
 	return NewTransaction(0, common.Address{}, big.NewInt(0), 0, big.NewInt(0), make([]byte, 0))
 }
 
+func NewBorTransactionWithGasLimit(gasLimit uint64) *Transaction {
+	return NewTransaction(0, common.Address{}, big.NewInt(0), gasLimit, big.NewInt(0), make([]byte, 0))
+}
+
 // DeriveFieldsForBorReceipt fills the receipts with their computed fields based on consensus
 // data and contextual infos like containing block and transactions.
 func DeriveFieldsForBorReceipt(receipt *Receipt, hash common.Hash, number uint64, receipts Receipts) error {

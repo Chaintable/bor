@@ -108,7 +108,8 @@ func (t *PipelineTracer) OnTxStart(vm *tracing.VMContext, tx *types.Transaction,
 }
 
 func (t *PipelineTracer) OnBorTxStart(txHash common.Hash) {
-	tx := types.NewBorTransaction()
+	//https://github.com/erigontech/erigon/blob/main/core/blockchain.go#L60
+	tx := types.NewBorTransactionWithGasLimit(30_000_000)
 	tx.SetHash(txHash)
 	t.pipelineTracer.OnTxStart(nil, tx, common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe"))
 }
