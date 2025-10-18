@@ -30,6 +30,7 @@ func (w *Witness) ToExtWitness() *ExtWitness {
 	defer w.lock.RUnlock()
 
 	ext := &ExtWitness{
+		Context: w.context,
 		Headers: w.Headers,
 	}
 	ext.Codes = make([]hexutil.Bytes, 0, len(w.Codes))
@@ -45,6 +46,7 @@ func (w *Witness) ToExtWitness() *ExtWitness {
 
 // fromExtWitness converts the consensus witness format into our internal one.
 func (w *Witness) fromExtWitness(ext *ExtWitness) error {
+	w.context = ext.Context
 	w.Headers = ext.Headers
 
 	w.Codes = make(map[string]struct{}, len(ext.Codes))
@@ -74,6 +76,7 @@ func (w *Witness) DecodeRLP(s *rlp.Stream) error {
 
 // ExtWitness is a witness RLP encoding for transferring across clients.
 type ExtWitness struct {
+	Context *types.Header
 	Headers []*types.Header `json:"headers"`
 	Codes   []hexutil.Bytes `json:"codes"`
 	State   []hexutil.Bytes `json:"state"`

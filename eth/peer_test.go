@@ -163,7 +163,7 @@ func TestRequestWitnesses_Controlling_Max_Concurrent_Calls(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, req, "expected a non-nil *eth.Request shim when witPeer is set")
 	assert.NotNil(t, response, "expected a non-nil *eth.Response shim when witPeer is set")
-	assert.Equal(t, 5, maxConcurrentCount, "must reach the maximum of the concurrent cound")
+	assert.Equal(t, 5, maxConcurrentCount, "must reach the maximum of the concurrent count")
 }
 
 // FillWitnessWithDeterministicRandomState repeatedly generates and adds random code blocks
