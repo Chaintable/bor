@@ -17,6 +17,8 @@
 // Package miner implements Ethereum block creation and mining.
 package miner
 
+// TODO marcello check this file very well
+
 import (
 	"fmt"
 	"math/big"
@@ -274,38 +276,4 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs, witness bool) (*Payload, error) {
 	return miner.worker.buildPayload(args, witness)
-}
-
-// getPending retrieves the pending block based on the current head block.
-// The result might be nil if pending generation is failed.
-func (miner *Miner) getPending() *newPayloadResult {
-	header := miner.chain.CurrentHeader()
-	miner.pendingMu.Lock()
-	defer miner.pendingMu.Unlock()
-
-	if cached := miner.pending.resolve(header.Hash()); cached != nil {
-		return cached
-	}
-	var (
-		timestamp  = uint64(time.Now().Unix())
-		withdrawal types.Withdrawals
-	)
-	if miner.chainConfig.IsShanghai(new(big.Int).Add(header.Number, big.NewInt(1)), timestamp) {
-		withdrawal = []*types.Withdrawal{}
-	}
-	ret := miner.generateWork(&generateParams{
-		timestamp:   timestamp,
-		forceTime:   false,
-		parentHash:  header.Hash(),
-		coinbase:    miner.config.PendingFeeRecipient,
-		random:      common.Hash{},
-		withdrawals: withdrawal,
-		beaconRoot:  nil,
-		noTxs:       false,
-	}, false) // we will never make a witness for a pending block
-	if ret.err != nil {
-		return nil
-	}
-	miner.pending.update(header.Hash(), ret)
-	return ret
 }

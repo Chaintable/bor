@@ -355,7 +355,7 @@ func (st *stateTransition) preCheck() error {
 				msg.From.Hex(), stNonce)
 		}
 	}
-	isOsaka := st.evm.ChainConfig().IsOsaka(st.evm.Context.BlockNumber, st.evm.Context.Time)
+	isOsaka := st.evm.ChainConfig().IsOsaka(st.evm.Context.BlockNumber)
 	if !msg.SkipTransactionChecks {
 		// Verify tx gas limit does not exceed EIP-7825 cap.
 		if isOsaka && msg.GasLimit > params.MaxTxGas {

@@ -29,8 +29,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/crypto/sha3"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -2593,41 +2591,41 @@ func (s *Syncer) forwardAccountTask(task *accountTask) {
 
 	// Skip account persistence entirely in bytecode-only mode
 	if !s.bytecodeOnlyMode {
-	batch := ethdb.HookedBatch{
-		Batch: s.db.NewBatch(),
-		OnPut: func(key []byte, value []byte) {
-			s.accountBytes += common.StorageSize(len(key) + len(value))
-		},
-	}
-
-	for i, hash := range res.hashes {
-		if task.needCode[i] || task.needState[i] {
-			break
+		batch := ethdb.HookedBatch{
+			Batch: s.db.NewBatch(),
+			OnPut: func(key []byte, value []byte) {
+				s.accountBytes += common.StorageSize(len(key) + len(value))
+			},
 		}
-		slim := types.SlimAccountRLP(*res.accounts[i])
-		rawdb.WriteAccountSnapshot(batch, hash, slim)
 
-		if !task.needHeal[i] {
-			// If the storage task is complete, drop it into the stack trie
-			// to generate account trie nodes for it
-			full, err := types.FullAccountRLP(slim) // TODO(karalabe): Slim parsing can be omitted
-			if err != nil {
-				panic(err) // Really shouldn't ever happen
+		for i, hash := range res.hashes {
+			if task.needCode[i] || task.needState[i] {
+				break
 			}
-			task.genTrie.update(hash[:], full)
-		} else {
-			// If the storage task is incomplete, explicitly delete the corresponding
-			// account item from the account trie to ensure that all nodes along the
-			// path to the incomplete storage trie are cleaned up.
-			if err := task.genTrie.delete(hash[:]); err != nil {
-				panic(err) // Really shouldn't ever happen
+			slim := types.SlimAccountRLP(*res.accounts[i])
+			rawdb.WriteAccountSnapshot(batch, hash, slim)
+
+			if !task.needHeal[i] {
+				// If the storage task is complete, drop it into the stack trie
+				// to generate account trie nodes for it
+				full, err := types.FullAccountRLP(slim) // TODO(karalabe): Slim parsing can be omitted
+				if err != nil {
+					panic(err) // Really shouldn't ever happen
+				}
+				task.genTrie.update(hash[:], full)
+			} else {
+				// If the storage task is incomplete, explicitly delete the corresponding
+				// account item from the account trie to ensure that all nodes along the
+				// path to the incomplete storage trie are cleaned up.
+				if err := task.genTrie.delete(hash[:]); err != nil {
+					panic(err) // Really shouldn't ever happen
+				}
 			}
 		}
-	}
-	// Flush anything written just now and update the stats
-	if err := batch.Write(); err != nil {
-		log.Crit("Failed to persist accounts", "err", err)
-	}
+		// Flush anything written just now and update the stats
+		if err := batch.Write(); err != nil {
+			log.Crit("Failed to persist accounts", "err", err)
+		}
 	}
 
 	s.accountSynced += uint64(len(res.accounts))
@@ -2641,9 +2639,9 @@ func (s *Syncer) forwardAccountTask(task *accountTask) {
 				return
 			}
 		} else {
-		if task.needCode[i] || task.needState[i] {
-			return
-		}
+			if task.needCode[i] || task.needState[i] {
+				return
+			}
 		}
 
 		task.Next = incHash(hash)
@@ -3544,8 +3542,9 @@ func (t *healRequestSort) Merge() []TrieNodePathSet {
 // the TrieNodePaths and merges paths which belongs to the same account path.
 func sortByAccountPath(paths []string, hashes []common.Hash) ([]string, []common.Hash, []trie.SyncPath, []TrieNodePathSet) {
 	syncPaths := make([]trie.SyncPath, 0, len(paths))
-	for i, path := range paths {
-		syncPaths[i] = trie.NewSyncPath([]byte(path))
+
+	for _, path := range paths {
+		syncPaths = append(syncPaths, trie.NewSyncPath([]byte(path)))
 	}
 
 	n := &healRequestSort{paths, hashes, syncPaths}

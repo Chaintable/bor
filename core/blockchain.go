@@ -17,6 +17,8 @@
 // Package core implements the Ethereum consensus protocol.
 package core
 
+// TODO marcello check this file very well
+
 import (
 	"bytes"
 	"context"
@@ -131,11 +133,11 @@ var (
 )
 
 const (
-	bodyCacheLimit      = 256
-	blockCacheLimit     = 256
-	receiptsCacheLimit  = 1024
-	txLookupCacheLimit  = 1024
-	// TODO marcello maxFutureBlocks, maxTimeFutureBlocks and future* not needed right?
+	bodyCacheLimit     = 256
+	blockCacheLimit    = 256
+	receiptsCacheLimit = 1024
+	txLookupCacheLimit = 1024
+	// TODO marcello maxFutureBlocks, maxTimeFutureBlocks and future* discarded from geth
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -350,19 +352,21 @@ type BlockChain struct {
 	txLookupLock  sync.RWMutex
 	txLookupCache *lru.Cache[common.Hash, txLookup]
 
-	stopping      atomic.Bool // false if chain is running, true when stopped
-	procInterrupt atomic.Bool // interrupt signaler for block processing
+	wg            sync.WaitGroup
+	quit          chan struct{} // shutdown signal, closed in Stop.
+	stopping      atomic.Bool   // false if chain is running, true when stopped
+	procInterrupt atomic.Bool   // interrupt signaler for block processing
 
-	engine     consensus.Engine
-	validator  Validator // Block and state validator interface
-	prefetcher Prefetcher
-	processor  Processor // Block transaction processor interface
+	engine                       consensus.Engine
+	validator                    Validator // Block and state validator interface
+	prefetcher                   Prefetcher
+	processor                    Processor // Block transaction processor interface
 	parallelProcessor            Processor // Parallel block transaction processor interface
 	parallelSpeculativeProcesses int       // Number of parallel speculative processes
 	enforceParallelProcessor     bool
 	forker                       *ForkChoice
-	logger     *tracing.Hooks
-	stateSizer *state.SizeTracker // State size tracking
+	logger                       *tracing.Hooks
+	stateSizer                   *state.SizeTracker // State size tracking
 
 	// Bor related changes
 	borReceiptsCache    *lru.Cache[common.Hash, *types.Receipt] // Cache for the most recent bor receipt receipts per block
@@ -410,21 +414,22 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	log.Info("")
 
 	bc := &BlockChain{
-		chainConfig:   chainConfig,
-		cfg:           cfg,
-		db:            db,
-		triedb:        triedb,
-		triegc:        prque.New[int64, common.Hash](nil),
-		chainmu:       syncx.NewClosableMutex(),
-		bodyCache:     lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
-		bodyRLPCache:  lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
-		receiptsCache: lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
-		blockCache:    lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
-		txLookupCache: lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
-		engine:        engine,
+		chainConfig:         chainConfig,
+		cfg:                 cfg,
+		db:                  db,
+		triedb:              triedb,
+		triegc:              prque.New[int64, common.Hash](nil),
+		quit:                make(chan struct{}),
+		chainmu:             syncx.NewClosableMutex(),
+		bodyCache:           lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
+		bodyRLPCache:        lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
+		receiptsCache:       lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
+		blockCache:          lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
+		txLookupCache:       lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
+		engine:              engine,
 		borReceiptsCache:    lru.NewCache[common.Hash, *types.Receipt](receiptsCacheLimit),
 		borReceiptsRLPCache: lru.NewCache[common.Hash, rlp.RawValue](receiptsCacheLimit),
-		logger:        cfg.VmConfig.Tracer,
+		logger:              cfg.VmConfig.Tracer,
 		checker:             cfg.Checker,
 	}
 
@@ -608,7 +613,6 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	// Start header verification loop
 	bc.startHeaderVerificationLoop()
 
-
 	// Start state size tracker
 	if bc.cfg.StateSizeTracking {
 		stateSizer, err := state.NewSizeTracker(bc.db, bc.triedb)
@@ -735,7 +739,7 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header, wit
 
 		go func() {
 			pstart := time.Now()
-			parallelStatedb.StartPrefetcher("chain", witness)
+			parallelStatedb.StartPrefetcher("chain", witness, nil)
 			res, err := bc.parallelProcessor.Process(block, parallelStatedb, bc.cfg.VmConfig, nil, ctx)
 			blockExecutionParallelTimer.UpdateSince(pstart)
 			if err == nil {
@@ -755,7 +759,7 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header, wit
 
 		go func() {
 			pstart := time.Now()
-			statedb.StartPrefetcher("chain", witness)
+			statedb.StartPrefetcher("chain", witness, nil)
 			res, err := bc.processor.Process(block, statedb, bc.cfg.VmConfig, nil, ctx)
 			blockExecutionSerialTimer.UpdateSince(pstart)
 			if err == nil {
@@ -1559,6 +1563,8 @@ func (bc *BlockChain) stopWithoutSaving() {
 	// Unsubscribe all subscriptions registered from blockchain.
 	bc.scope.Close()
 
+	close(bc.quit)
+
 	// Signal shutdown to all goroutines.
 	bc.InterruptInsert(true)
 
@@ -2255,28 +2261,6 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	return status, nil
 }
 
-// addFutureBlock checks if the block is within the max allowed window to get
-// accepted for future processing, and returns an error if the block is too far
-// ahead and was not added.
-//
-// TODO after the transition, the future block shouldn't be kept. Because
-// it's not checked in the Geth side anymore.
-func (bc *BlockChain) addFutureBlock(block *types.Block) error {
-	max := uint64(time.Now().Unix() + maxTimeFutureBlocks)
-	if block.Time() > max {
-		return fmt.Errorf("future block timestamp %v > allowed %v", block.Time(), max)
-	}
-
-	if block.Difficulty().Cmp(common.Big0) == 0 {
-		// Never add PoS blocks into the future queue
-		return nil
-	}
-
-	bc.futureBlocks.Add(block.Hash(), block)
-
-	return nil
-}
-
 // InsertChain attempts to insert the given batch of blocks in to the canonical
 // chain or, otherwise, create a fork. If an error is returned it will return
 // the index number of the failing block as well an error describing what went
@@ -2617,23 +2601,6 @@ func (bc *BlockChain) insertChainWithWitnesses(chain types.Blocks, setHead bool,
 			_, err := bc.recoverAncestors(block, makeWitness)
 			return nil, it.index, err
 		}
-	// First block is future, shove it (and all children) to the future queue (unknown ancestor)
-	case errors.Is(err, consensus.ErrFutureBlock) || (errors.Is(err, consensus.ErrUnknownAncestor) && bc.futureBlocks.Contains(it.first().ParentHash())):
-		for block != nil && (it.index == 0 || errors.Is(err, consensus.ErrUnknownAncestor)) {
-			log.Debug("Future block, postponing import", "number", block.Number(), "hash", block.Hash())
-
-			if err := bc.addFutureBlock(block); err != nil {
-				return nil, it.index, err
-			}
-
-			block, err = it.next()
-		}
-
-		stats.queued += it.processed()
-		stats.ignored += it.remaining()
-
-		// If there are any still remaining, mark as ignored
-		return nil, it.index, err
 
 	// Some other error(except ErrKnownBlock) occurred, abort.
 	// ErrKnownBlock is allowed here since some known blocks
@@ -2951,23 +2918,6 @@ func (bc *BlockChain) insertChainWithWitnesses(chain types.Blocks, setHead bool,
 	emitAccum()
 	// BOR
 
-	// Any blocks remaining here? The only ones we care about are the future ones
-	if block != nil && errors.Is(err, consensus.ErrFutureBlock) {
-		if err := bc.addFutureBlock(block); err != nil {
-			return nil, it.index, err
-		}
-
-		block, err = it.next()
-
-		for ; block != nil && errors.Is(err, consensus.ErrUnknownAncestor); block, err = it.next() {
-			if err := bc.addFutureBlock(block); err != nil {
-				return nil, it.index, err
-			}
-
-			stats.queued++
-		}
-	}
-
 	stats.ignored += it.remaining()
 	return witness, it.index, err
 }
@@ -2982,6 +2932,7 @@ type blockProcessingResult struct {
 	witness  *stateless.Witness
 }
 
+//nolint:unused
 func (bpr *blockProcessingResult) Witness() *stateless.Witness {
 	return bpr.witness
 }
@@ -3023,6 +2974,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	vtime := time.Since(vstart)
 
 	var witness *stateless.Witness
+	var witnessStats *stateless.WitnessStats
 
 	// If witnesses was generated and stateless self-validation requested, do
 	// that now. Self validation should *never* run in production, it's more of
@@ -3032,6 +2984,10 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	xvstart := time.Now()
 	if witness = statedb.Witness(); witness != nil && bc.cfg.VmConfig.StatelessSelfValidation {
 		log.Warn("Running stateless self-validation", "block", block.Number(), "hash", block.Hash())
+
+		if bc.cfg.VmConfig.EnableWitnessStats {
+			witnessStats = stateless.NewWitnessStats()
+		}
 
 		// Remove critical computed fields from the block to force true recalculation
 		context := block.Header()

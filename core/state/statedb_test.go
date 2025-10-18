@@ -1204,12 +1204,12 @@ func TestApplyMVWriteSet(t *testing.T) {
 
 	// Tx3 write
 	states[3].SelfDestruct(addr2)
-	states[3].SetCode(addr1, code)
+	states[3].SetCode(addr1, code, tracing.CodeChangeUnspecified)
 	states[3].Finalise(true)
 	states[3].FlushMVWriteSet()
 
 	sSingleProcess.SelfDestruct(addr2)
-	sSingleProcess.SetCode(addr1, code)
+	sSingleProcess.SetCode(addr1, code, tracing.CodeChangeUnspecified)
 
 	sClean.ApplyMVWriteSet(states[3].MVWriteList())
 

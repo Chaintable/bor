@@ -192,7 +192,7 @@ func (b *testBackend) GetBorBlockReceipt(_ context.Context, blockHash common.Has
 		return &types.Receipt{}, nil
 	}
 
-	receipt := rawdb.ReadBorReceipt(b.db, blockHash, *number, nil)
+	receipt := rawdb.ReadBorReceipt(b.db, blockHash, number, nil)
 	if receipt == nil {
 		return &types.Receipt{}, nil
 	}
@@ -514,7 +514,7 @@ func TestInvalidGetLogsRequest(t *testing.T) {
 		}
 		db, blocks, _    = core.GenerateChainWithGenesis(genesis, ethash.NewFaker(), 10, func(i int, gen *core.BlockGen) {})
 		_, sys           = newTestFilterSystem(db, Config{LogQueryLimit: 10})
-		api       = NewFilterAPI(sys, true)
+		api              = NewFilterAPI(sys, true)
 		blockHash        = blocks[0].Hash()
 		unknownBlockHash = common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111")
 	)
@@ -526,7 +526,7 @@ func TestInvalidGetLogsRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create tester chain: %v", err)
 	}
-	if n, err := blockchain.InsertChain(blocks); err != nil {
+	if n, err := blockchain.InsertChain(blocks, false); err != nil {
 		t.Fatalf("block %d: failed to insert into chain: %v", n, err)
 	}
 
@@ -566,7 +566,7 @@ func TestInvalidGetLogsRequest(t *testing.T) {
 	}
 
 	for i, test := range testCases {
-		_, err := api.GetLogs(context.Background(), test.f)
+		_, err := api.GetLogs(t.Context(), test.f)
 		if !errors.Is(err, test.err) {
 			t.Errorf("case %d: wrong error: %q\nwant: %q", i, err, test.err)
 		}
@@ -618,7 +618,7 @@ func TestExceedLogQueryLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = bc.InsertChain(chain[:600])
+	_, err = bc.InsertChain(chain[:600], false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,7 +638,7 @@ func TestExceedLogQueryLimit(t *testing.T) {
 
 	// Test that 5 addresses do not result in error
 	// Add FromBlock and ToBlock to make it similar to other invalid tests
-	if _, err := api.GetLogs(context.Background(), FilterCriteria{
+	if _, err := api.GetLogs(t.Context(), FilterCriteria{
 		FromBlock: big.NewInt(0),
 		ToBlock:   big.NewInt(100),
 		Addresses: addresses[:5],
@@ -647,7 +647,7 @@ func TestExceedLogQueryLimit(t *testing.T) {
 	}
 
 	// Test that 6 addresses fails with correct error
-	if _, err := api.GetLogs(context.Background(), FilterCriteria{
+	if _, err := api.GetLogs(t.Context(), FilterCriteria{
 		FromBlock: big.NewInt(0),
 		ToBlock:   big.NewInt(100),
 		Addresses: addresses,
@@ -656,7 +656,7 @@ func TestExceedLogQueryLimit(t *testing.T) {
 	}
 
 	// Test that 5 topics at one position do not result in error
-	if _, err := api.GetLogs(context.Background(), FilterCriteria{
+	if _, err := api.GetLogs(t.Context(), FilterCriteria{
 		FromBlock: big.NewInt(0),
 		ToBlock:   big.NewInt(100),
 		Addresses: addresses[:1],
@@ -666,7 +666,7 @@ func TestExceedLogQueryLimit(t *testing.T) {
 	}
 
 	// Test that 6 topics at one position fails with correct error
-	if _, err := api.GetLogs(context.Background(), FilterCriteria{
+	if _, err := api.GetLogs(t.Context(), FilterCriteria{
 		FromBlock: big.NewInt(0),
 		ToBlock:   big.NewInt(100),
 		Addresses: addresses[:1],

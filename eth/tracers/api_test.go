@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"reflect"
 	"slices"
 	"sync/atomic"
@@ -1495,8 +1496,8 @@ func TestStandardTraceBlockToFile(t *testing.T) {
 
 	api := NewAPI(backend)
 	for i, tc := range testSuite {
-		block, _ := api.blockByNumber(context.Background(), tc.blockNumber)
-		txTraces, err := api.StandardTraceBlockToFile(context.Background(), block.Hash(), tc.config)
+		block, _ := api.blockByNumber(t.Context(), tc.blockNumber)
+		txTraces, err := api.StandardTraceBlockToFile(t.Context(), block.Hash(), tc.config)
 		if err != nil {
 			t.Fatalf("test index %d received error %v", i, err)
 		}

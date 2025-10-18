@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/olekukonko/tablewriter"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -377,9 +378,9 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 					printChainMetadata(db)
 					return nil, fmt.Errorf("could not read header number, hash %v", ReadHeadHeaderHash(db))
 				}
-				if head > startBlock - 1 {
-				// Find the smallest block stored in the key-value store
-				// in range of [frozen, head]
+				if head > startBlock-1 {
+					// Find the smallest block stored in the key-value store
+					// in range of [frozen, head]
 					var number uint64
 					for number = startBlock; number <= head; number++ {
 						if present, _ := db.Has(headerHashKey(number)); present {

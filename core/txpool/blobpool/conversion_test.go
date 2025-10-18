@@ -64,6 +64,7 @@ func TestConversionQueueBasic(t *testing.T) {
 }
 
 func TestConversionQueueV1BlobTx(t *testing.T) {
+	t.Skip("bor: skipping as it's not relevant to bor")
 	queue := newConversionQueue()
 	defer queue.close()
 

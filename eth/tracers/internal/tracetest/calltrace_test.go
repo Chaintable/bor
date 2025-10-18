@@ -115,9 +115,9 @@ func testCallTracer(tracerName string, dirPath string, t *testing.T) {
 			}
 			// Configure a blockchain with the given prestate
 			var (
-				signer  = types.MakeSigner(test.Genesis.Config, new(big.Int).SetUint64(uint64(test.Context.Number)), uint64(test.Context.Time))
+				signer       = types.MakeSigner(test.Genesis.Config, new(big.Int).SetUint64(uint64(test.Context.Number)), uint64(test.Context.Time))
 				blockContext = test.Context.toBlockContext(test.Genesis)
-				st      = tests.MakePreState(rawdb.NewMemoryDatabase(), test.Genesis.Alloc, false, rawdb.HashScheme)
+				st           = tests.MakePreState(rawdb.NewMemoryDatabase(), test.Genesis.Alloc, false, rawdb.HashScheme)
 			)
 			st.Close()
 
@@ -255,12 +255,12 @@ func TestInternals(t *testing.T) {
 	t.Parallel()
 
 	var (
-		config    = params.MainnetChainConfig
-		to        = common.HexToAddress("0x00000000000000000000000000000000deadbeef")
-		originHex = "0x71562b71999873db5b286df957af199ec94617f7"
-		origin    = common.HexToAddress(originHex)
-		signer    = types.LatestSigner(config)
-		key, _    = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+		config       = params.MainnetChainConfig
+		to           = common.HexToAddress("0x00000000000000000000000000000000deadbeef")
+		originHex    = "0x71562b71999873db5b286df957af199ec94617f7"
+		origin       = common.HexToAddress(originHex)
+		signer       = types.LatestSigner(config)
+		key, _       = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 		blockContext = vm.BlockContext{
 			CanTransfer: core.CanTransfer,
 			Transfer:    core.Transfer,

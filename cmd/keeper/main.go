@@ -52,7 +52,7 @@ func main() {
 	}
 	vmConfig := vm.Config{}
 
-	crossStateRoot, crossReceiptRoot, err := core.ExecuteStateless(chainConfig, vmConfig, payload.Block, payload.Witness)
+	crossStateRoot, crossReceiptRoot, _, _, err := core.ExecuteStateless(chainConfig, vmConfig, payload.Block, payload.Witness, nil, nil, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "stateless self-validation failed: %v\n", err)
 		os.Exit(10)

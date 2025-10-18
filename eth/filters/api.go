@@ -87,7 +87,7 @@ func NewFilterAPI(system *FilterSystem, borLogs bool) *FilterAPI {
 		filters:       make(map[rpc.ID]*filter),
 		timeout:       system.cfg.Timeout,
 		logQueryLimit: system.cfg.LogQueryLimit,
-		borLogs: borLogs,
+		borLogs:       borLogs,
 	}
 	go api.timeoutLoop(system.cfg.Timeout)
 

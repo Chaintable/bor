@@ -288,12 +288,15 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	if o.OverrideOsaka != nil {
 		cfg.OsakaBlock = o.OverrideOsaka
 	}
-	if o.OverrideBPO1 != nil {
-		cfg.BPO1Block = o.OverrideBPO1
-	}
-	if o.OverrideBPO2 != nil {
-		cfg.BPO2Block = o.OverrideBPO2
-	}
+	// TODO marcello discarded from geth
+	/*
+		if o.OverrideBPO1 != nil {
+			cfg.BPO1Block = o.OverrideBPO1
+		}
+		if o.OverrideBPO2 != nil {
+			cfg.BPO2Block = o.OverrideBPO2
+		}
+	*/
 	if o.OverrideVerkle != nil {
 		cfg.VerkleBlock = o.OverrideVerkle
 	}

@@ -19,7 +19,6 @@ package ethconfig
 
 import (
 	"math/big"
-	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -71,7 +70,7 @@ var Defaults = Config{
 	TrieTimeout:           60 * time.Minute,
 	SnapshotCache:         102,
 	FilterLogCacheSize:    32,
-	LogQueryLimit:      1000,
+	LogQueryLimit:         1000,
 	Miner:                 miner.DefaultConfig,
 	TxPool:                legacypool.DefaultConfig,
 	BlobPool:              blobpool.DefaultConfig,
@@ -241,10 +240,10 @@ type Config struct {
 	OverrideOsaka *big.Int `toml:",omitempty"`
 
 	// OverrideBPO1 (TODO: remove after the fork)
-	OverrideBPO1 *uint64 `toml:",omitempty"`
+	OverrideBPO1 *big.Int `toml:",omitempty"`
 
 	// OverrideBPO2 (TODO: remove after the fork)
-	OverrideBPO2 *uint64 `toml:",omitempty"`
+	OverrideBPO2 *big.Int `toml:",omitempty"`
 
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *big.Int `toml:",omitempty"`

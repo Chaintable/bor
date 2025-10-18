@@ -460,7 +460,7 @@ func TestGraphQLMaxDepth(t *testing.T) {
 	}
 	query := fmt.Sprintf("{block{%s}}", b.String())
 
-	res := h.Schema.Exec(context.Background(), query, "", nil)
+	res := h.Schema.Exec(t.Context(), query, "", nil)
 	var found bool
 	for _, err := range res.Errors {
 		if err.Rule == "MaxDepthExceeded" {

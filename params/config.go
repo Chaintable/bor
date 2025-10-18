@@ -752,31 +752,33 @@ var (
 		Max:            9,
 		UpdateFraction: 5007716,
 	}
-	// TODO marcello do we even need all these BPOs configs?
-	// DefaultBPO1BlobConfig is the default blob configuration for the Osaka fork.
-	DefaultBPO1BlobConfig = &BlobConfig{
-		Target:         10,
-		Max:            15,
-		UpdateFraction: 8346193,
-	}
-	// DefaultBPO1BlobConfig is the default blob configuration for the Osaka fork.
-	DefaultBPO2BlobConfig = &BlobConfig{
-		Target:         14,
-		Max:            21,
-		UpdateFraction: 11684671,
-	}
-	// DefaultBPO1BlobConfig is the default blob configuration for the Osaka fork.
-	DefaultBPO3BlobConfig = &BlobConfig{
-		Target:         21,
-		Max:            32,
-		UpdateFraction: 20609697,
-	}
-	// DefaultBPO1BlobConfig is the default blob configuration for the Osaka fork.
-	DefaultBPO4BlobConfig = &BlobConfig{
-		Target:         14,
-		Max:            21,
-		UpdateFraction: 13739630,
-	}
+	// TODO marcello discarded from geth
+	/*
+		// DefaultBPO1BlobConfig is the default blob configuration for the Osaka fork.
+		DefaultBPO1BlobConfig = &BlobConfig{
+			Target:         10,
+			Max:            15,
+			UpdateFraction: 8346193,
+		}
+		// DefaultBPO1BlobConfig is the default blob configuration for the Osaka fork.
+		DefaultBPO2BlobConfig = &BlobConfig{
+			Target:         14,
+			Max:            21,
+			UpdateFraction: 11684671,
+		}
+		// DefaultBPO1BlobConfig is the default blob configuration for the Osaka fork.
+		DefaultBPO3BlobConfig = &BlobConfig{
+			Target:         21,
+			Max:            32,
+			UpdateFraction: 20609697,
+		}
+		// DefaultBPO1BlobConfig is the default blob configuration for the Osaka fork.
+		DefaultBPO4BlobConfig = &BlobConfig{
+			Target:         14,
+			Max:            21,
+			UpdateFraction: 13739630,
+		}
+	*/
 	// DefaultBlobSchedule is the latest configured blob schedule for Ethereum mainnet.
 	DefaultBlobSchedule = &BlobScheduleConfig{
 		Cancun: DefaultCancunBlobConfig,
@@ -833,12 +835,12 @@ type ChainConfig struct {
 	PragueBlock   *big.Int `json:"pragueBlock,omitempty"`   // Prague switch Block (nil = no fork, 0 = already on prague)
 	VerkleBlock   *big.Int `json:"verkleBlock,omitempty"`   // Verkle switch Block (nil = no fork, 0 = already on verkle)
 	OsakaBlock    *big.Int `json:"osakaBlock,omitempty"`    // Osaka switch Block (nil = no fork, 0 = already on osaka)
-	// TODO marcello if we need them, make it blocks based
-	BPO1Time     *uint64 `json:"bpo1Time,omitempty"`     // BPO1 switch time (nil = no fork, 0 = already on bpo1)
-	BPO2Time     *uint64 `json:"bpo2Time,omitempty"`     // BPO2 switch time (nil = no fork, 0 = already on bpo2)
-	BPO3Time     *uint64 `json:"bpo3Time,omitempty"`     // BPO3 switch time (nil = no fork, 0 = already on bpo3)
-	BPO4Time     *uint64 `json:"bpo4Time,omitempty"`     // BPO4 switch time (nil = no fork, 0 = already on bpo4)
-	BPO5Time     *uint64 `json:"bpo5Time,omitempty"`     // BPO5 switch time (nil = no fork, 0 = already on bpo5)
+	// TODO marcello discarded from geth
+	//BPO1Block     *big.Int `json:"bpo1Block,omitempty"`     // BPO1 switch Block (nil = no fork, 0 = already on bpo1)
+	//BPO2Block     *big.Int `json:"bpo2Block,omitempty"`     // BPO2 switch Block (nil = no fork, 0 = already on bpo2)
+	//BPO3Block     *big.Int `json:"bpo3Block,omitempty"`     // BPO3 switch Block (nil = no fork, 0 = already on bpo3)
+	//BPO4Block     *big.Int `json:"bpo4Block,omitempty"`     // BPO4 switch Block (nil = no fork, 0 = already on bpo4)
+	//BPO5Block     *big.Int `json:"bpo5Block,omitempty"`     // BPO5 switch Block (nil = no fork, 0 = already on bpo5)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
 	// the network that triggers the consensus upgrade.
@@ -1109,22 +1111,24 @@ func (c *ChainConfig) Description() string {
 	if c.OsakaBlock != nil {
 		banner += fmt.Sprintf(" - Osaka:                      #%-8v\n", *c.OsakaBlock)
 	}
-	// TODO marcello if we need them, make it blocks based
-	if c.BPO1Time != nil {
-		banner += fmt.Sprintf(" - BPO1:                        @%-10v\n", *c.BPO1Time)
-	}
-	if c.BPO2Time != nil {
-		banner += fmt.Sprintf(" - BPO2:                        @%-10v\n", *c.BPO2Time)
-	}
-	if c.BPO3Time != nil {
-		banner += fmt.Sprintf(" - BPO3:                        @%-10v\n", *c.BPO3Time)
-	}
-	if c.BPO4Time != nil {
-		banner += fmt.Sprintf(" - BPO4:                        @%-10v\n", *c.BPO4Time)
-	}
-	if c.BPO5Time != nil {
-		banner += fmt.Sprintf(" - BPO5:                        @%-10v\n", *c.BPO5Time)
-	}
+	// TODO marcello discarded from geth
+	/*
+		if c.BPO1Block != nil {
+			banner += fmt.Sprintf(" - BPO1:                        @%-10v\n", *c.BPO1Block)
+		}
+		if c.BPO2Block != nil {
+			banner += fmt.Sprintf(" - BPO2:                        @%-10v\n", *c.BPO2Block)
+		}
+		if c.BPO3Block != nil {
+			banner += fmt.Sprintf(" - BPO3:                        @%-10v\n", *c.BPO3Block)
+		}
+		if c.BPO4Block != nil {
+			banner += fmt.Sprintf(" - BPO4:                        @%-10v\n", *c.BPO4Block)
+		}
+		if c.BPO5Block != nil {
+			banner += fmt.Sprintf(" - BPO5:                        @%-10v\n", *c.BPO5Block)
+		}
+	*/
 	return banner
 }
 
@@ -1141,12 +1145,14 @@ type BlobScheduleConfig struct {
 	Prague *BlobConfig `json:"prague,omitempty"`
 	Osaka  *BlobConfig `json:"osaka,omitempty"`
 	Verkle *BlobConfig `json:"verkle,omitempty"`
-	// TODO marcello if we need them, make it blocks based
-	BPO1   *BlobConfig `json:"bpo1,omitempty"`
-	BPO2   *BlobConfig `json:"bpo2,omitempty"`
-	BPO3   *BlobConfig `json:"bpo3,omitempty"`
-	BPO4   *BlobConfig `json:"bpo4,omitempty"`
-	BPO5   *BlobConfig `json:"bpo5,omitempty"`
+	// TODO marcello discarded from geth
+	/*
+		BPO1   *BlobConfig `json:"bpo1,omitempty"`
+		BPO2   *BlobConfig `json:"bpo2,omitempty"`
+		BPO3   *BlobConfig `json:"bpo3,omitempty"`
+		BPO4   *BlobConfig `json:"bpo4,omitempty"`
+		BPO5   *BlobConfig `json:"bpo5,omitempty"`
+	*/
 }
 
 // IsHomestead returns whether num is either equal to the homestead block or greater.
@@ -1233,12 +1239,12 @@ func (c *ChainConfig) IsTerminalPoWBlock(parentTotalDiff *big.Int, totalDiff *bi
 // IsPostMerge reports whether the given block number is assumed to be post-merge.
 // Here we check the MergeNetsplitBlock to allow configuring networks with a PoW or
 // PoA chain for unit testing purposes.
-// TODO marcello if we need it make it blocks based
-func (c *ChainConfig) IsPostMerge(blockNum uint64, timestamp uint64) bool {
+// TODO marcello check this
+func (c *ChainConfig) IsPostMerge(blockNum uint64, _ uint64) bool {
 	mergedAtGenesis := c.TerminalTotalDifficulty != nil && c.TerminalTotalDifficulty.Sign() == 0
 	return mergedAtGenesis ||
 		c.MergeNetsplitBlock != nil && blockNum >= c.MergeNetsplitBlock.Uint64() ||
-		c.ShanghaiTime != nil && timestamp >= *c.ShanghaiTime
+		c.ShanghaiBlock != nil && blockNum >= c.ShanghaiBlock.Uint64()
 }
 
 // IsShanghai returns whether num is either equal to the Shanghai fork block or greater.
@@ -1266,31 +1272,34 @@ func (c *ChainConfig) IsOsaka(num *big.Int) bool {
 	return c.IsLondon(num) && isBlockForked(c.OsakaBlock, num)
 }
 
-// TODO marcello if we need these, make them blocks based
-// IsBPO1 returns whether time is either equal to the BPO1 fork time or greater.
-func (c *ChainConfig) IsBPO1(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.BPO1Time, time)
+// TODO marcello discarded from geth
+
+/*
+// IsBPO1 returns whether the block is either equal to the BPO1 fork block or greater.
+func (c *ChainConfig) IsBPO1(num *big.Int) bool {
+	return c.IsLondon(num) && isBlockForked(c.BPO1Block, num)
 }
 
 // IsBPO2 returns whether time is either equal to the BPO2 fork time or greater.
-func (c *ChainConfig) IsBPO2(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.BPO2Time, time)
+func (c *ChainConfig) IsBPO2(num *big.Int) bool {
+	return c.IsLondon(num) && isBlockForked(c.BPO2Block, num)
 }
 
-// IsBPO3 returns whether time is either equal to the BPO3 fork time or greater.
-func (c *ChainConfig) IsBPO3(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.BPO3Time, time)
+// IsBPO3 returns whether the block is either equal to the BPO3 fork block or greater.
+func (c *ChainConfig) IsBPO3(num *big.Int) bool {
+	return c.IsLondon(num) && isBlockForked(c.BPO3Block, num)
 }
 
-// IsBPO4 returns whether time is either equal to the BPO4 fork time or greater.
-func (c *ChainConfig) IsBPO4(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.BPO4Time, time)
+// IsBPO4 returns whether the block is either equal to the BPO4 fork block or greater.
+func (c *ChainConfig) IsBPO4(num *big.Int) bool {
+	return c.IsLondon(num) && isBlockForked(c.BPO4Block, num)
 }
 
-// IsBPO5 returns whether time is either equal to the BPO5 fork time or greater.
-func (c *ChainConfig) IsBPO5(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.BPO5Time, time)
+// IsBPO5 returns whether the block is either equal to the BPO5 fork block or greater.
+func (c *ChainConfig) IsBPO5(num *big.Int) bool {
+	return c.IsLondon(num) && isBlockForked(c.BPO5Block, num)
 }
+*/
 
 // IsVerkleGenesis checks whether the verkle fork is activated at the genesis block.
 //
@@ -1371,12 +1380,14 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "pragueBlock", block: c.PragueBlock, optional: true},
 		{name: "osakaBlock", block: c.OsakaBlock, optional: true},
 		{name: "verkleBlock", block: c.VerkleBlock, optional: true},
-		// TODO marcello if we need them, make blocks based
-		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
-		{name: "bpo2", timestamp: c.BPO2Time, optional: true},
-		{name: "bpo3", timestamp: c.BPO3Time, optional: true},
-		{name: "bpo4", timestamp: c.BPO4Time, optional: true},
-		{name: "bpo5", timestamp: c.BPO5Time, optional: true},
+		// TODO marcello discarded from geth
+		/*
+			{name: "bpo1", block: c.BPO1Block, optional: true},
+			{name: "bpo2", block: c.BPO2Block, optional: true},
+			{name: "bpo3", block: c.BPO3Block, optional: true},
+			{name: "bpo4", block: c.BPO4Block, optional: true},
+			{name: "bpo5", block: c.BPO5Block, optional: true},
+		*/
 	} {
 		if lastFork.name != "" {
 			switch {
@@ -1426,11 +1437,14 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "cancun", timestamp: nil, config: bsc.Cancun},
 		{name: "prague", timestamp: nil, config: bsc.Prague},
 		{name: "osaka", timestamp: nil, config: bsc.Osaka},
-		{name: "bpo1", timestamp: c.BPO1Time, config: bsc.BPO1},
-		{name: "bpo2", timestamp: c.BPO2Time, config: bsc.BPO2},
-		{name: "bpo3", timestamp: c.BPO3Time, config: bsc.BPO3},
-		{name: "bpo4", timestamp: c.BPO4Time, config: bsc.BPO4},
-		{name: "bpo5", timestamp: c.BPO5Time, config: bsc.BPO5},
+		// TODO marcello discarded from geth
+		/*
+			{name: "bpo1", timestamp: nil, config: bsc.BPO1},
+			{name: "bpo2", timestamp: nil, config: bsc.BPO2},
+			{name: "bpo3", timestamp: nil, config: bsc.BPO3},
+			{name: "bpo4", timestamp: nil, config: bsc.BPO4},
+			{name: "bpo5", timestamp: nil, config: bsc.BPO5},
+		*/
 	} {
 		if cur.config != nil {
 			if err := cur.config.validate(); err != nil {
@@ -1552,21 +1566,6 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 		return newBlockCompatError("Osaka fork block", c.OsakaBlock, newcfg.OsakaBlock)
 	}
 
-	if isForkTimestampIncompatible(c.BPO1Time, newcfg.BPO1Time, headTimestamp) {
-		return newTimestampCompatError("BPO1 fork timestamp", c.BPO1Time, newcfg.BPO1Time)
-	}
-	if isForkTimestampIncompatible(c.BPO2Time, newcfg.BPO2Time, headTimestamp) {
-		return newTimestampCompatError("BPO2 fork timestamp", c.BPO2Time, newcfg.BPO2Time)
-	}
-	if isForkTimestampIncompatible(c.BPO3Time, newcfg.BPO3Time, headTimestamp) {
-		return newTimestampCompatError("BPO3 fork timestamp", c.BPO3Time, newcfg.BPO3Time)
-	}
-	if isForkTimestampIncompatible(c.BPO4Time, newcfg.BPO4Time, headTimestamp) {
-		return newTimestampCompatError("BPO4 fork timestamp", c.BPO4Time, newcfg.BPO4Time)
-	}
-	if isForkTimestampIncompatible(c.BPO5Time, newcfg.BPO5Time, headTimestamp) {
-		return newTimestampCompatError("BPO5 fork timestamp", c.BPO5Time, newcfg.BPO5Time)
-	}
 	return nil
 }
 
@@ -1594,18 +1593,48 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 		return forks.Cancun
 	case c.IsShanghai(london):
 		return forks.Shanghai
-	case c.IsBPO5(london, time):
-		return forks.BPO5
-	case c.IsBPO4(london, time):
-		return forks.BPO4
-	case c.IsBPO3(london, time):
-		return forks.BPO3
-	case c.IsBPO2(london, time):
-		return forks.BPO2
-	case c.IsBPO1(london, time):
-		return forks.BPO1
+	// TODO marcello discarded from geth
+	/*
+		case c.IsBPO5(london):
+			return forks.BPO5
+		case c.IsBPO4(london):
+			return forks.BPO4
+		case c.IsBPO3(london):
+			return forks.BPO3
+		case c.IsBPO2(london):
+			return forks.BPO2
+		case c.IsBPO1(london):
+			return forks.BPO1
+	*/
 	default:
 		return forks.Paris
+	}
+}
+
+// BlobConfig returns the blob config associated with the provided fork.
+func (c *ChainConfig) BlobConfig(fork forks.Fork) *BlobConfig {
+	switch fork {
+	// TODO marcello discarded from geth
+	/*
+		case forks.BPO5:
+			return c.BlobScheduleConfig.BPO5
+		case forks.BPO4:
+			return c.BlobScheduleConfig.BPO4
+		case forks.BPO3:
+			return c.BlobScheduleConfig.BPO3
+		case forks.BPO2:
+			return c.BlobScheduleConfig.BPO2
+		case forks.BPO1:
+			return c.BlobScheduleConfig.BPO1
+	*/
+	case forks.Osaka:
+		return c.BlobScheduleConfig.Osaka
+	case forks.Prague:
+		return c.BlobScheduleConfig.Prague
+	case forks.Cancun:
+		return c.BlobScheduleConfig.Cancun
+	default:
+		return nil
 	}
 }
 
@@ -1629,34 +1658,35 @@ func (c *ChainConfig) ActiveSystemContracts(time uint64) map[string]common.Addre
 	return active
 }
 
-/*
-// Timestamp returns the timestamp associated with the fork or returns nil if
-// the fork isn't defined or isn't a time-based fork.
-func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
+// Block returns the Block associated with the fork or returns nil if
+// the fork isn't defined
+func (c *ChainConfig) Block(fork forks.Fork) *big.Int {
 	switch {
-	case fork == forks.BPO5:
-		return c.BPO5Time
-	case fork == forks.BPO4:
-		return c.BPO4Time
-	case fork == forks.BPO3:
-		return c.BPO3Time
-	case fork == forks.BPO2:
-		return c.BPO2Time
-	case fork == forks.BPO1:
-		return c.BPO1Time
+	// TODO marcello discarded from geth
+	/*
+		case fork == forks.BPO5:
+			return c.BPO5Block
+		case fork == forks.BPO4:
+			return c.BPO4Block
+		case fork == forks.BPO3:
+			return c.BPO3Block
+		case fork == forks.BPO2:
+			return c.BPO2Block
+		case fork == forks.BPO1:
+			return c.BPO1Block
+	*/
 	case fork == forks.Osaka:
-		return c.OsakaTime
+		return c.OsakaBlock
 	case fork == forks.Prague:
-		return c.PragueTime
+		return c.PragueBlock
 	case fork == forks.Cancun:
-		return c.CancunTime
+		return c.CancunBlock
 	case fork == forks.Shanghai:
-		return c.ShanghaiTime
+		return c.ShanghaiBlock
 	default:
 		return nil
 	}
 }
-*/
 
 // isForkBlockIncompatible returns true if a fork scheduled at block s1 cannot be
 // rescheduled to block s2 because head is already past the fork.
@@ -1665,8 +1695,7 @@ func isForkBlockIncompatible(s1, s2, head *big.Int) bool {
 }
 
 // isBlockForked returns whether a fork scheduled at block s is active at the
-// given head block. Whilst this method is the same as isTimestampForked, they
-// are explicitly separate for clearer reading.
+// given head block.
 func isBlockForked(s, head *big.Int) bool {
 	if s == nil || head == nil {
 		return false
@@ -1785,7 +1814,7 @@ type Rules struct {
 }
 
 // Rules ensures c's ChainID is not nil.
-func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules {
+func (c *ChainConfig) Rules(num *big.Int, isMerge bool, _ uint64) Rules {
 	chainID := c.ChainID
 	if chainID == nil {
 		chainID = new(big.Int)

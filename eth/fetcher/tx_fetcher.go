@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	// maxTxAnnounces is the maximum number of unique transaction a peer
+	// maxTxAnnounces is the maximum number of unique transactions a peer
 	// can announce in a short time.
 	maxTxAnnounces = 4096
 
@@ -118,8 +118,9 @@ type txAnnounce struct {
 	metas  []*txMetadata // Batch of metadatas associated with the hashes (nil before eth/68)
 }
 
-// txMetadata is a set of extra data transmitted along the announcement for better
-// fetch scheduling.
+
+// txMetadata provides the extra data transmitted along with the announcement
+// for better fetch scheduling.
 type txMetadata struct {
 	kind byte   // Transaction consensus type
 	size uint32 // Transaction size in bytes
@@ -138,7 +139,7 @@ type txRequest struct {
 type txDelivery struct {
 	origin string        // Identifier of the peer originating the notification
 	hashes []common.Hash // Batch of transaction hashes having been delivered
-	metas  []txMetadata  // Batch of metadatas associated with the delivered hashes
+	metas  []txMetadata  // Batch of metadata associated with the delivered hashes
 	direct bool          // Whether this is a direct reply or a broadcast
 }
 

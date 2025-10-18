@@ -37,8 +37,8 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/forkid"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -1536,7 +1536,7 @@ func (api *BlockChainAPI) CreateAccessList(ctx context.Context, args Transaction
 }
 
 type config struct {
-	ActivationTime  uint64                    `json:"activationTime"`
+	ActivationBlock big.Int                   `json:"activationBlock"`
 	BlobSchedule    *params.BlobConfig        `json:"blobSchedule"`
 	ChainId         *hexutil.Big              `json:"chainId"`
 	ForkId          hexutil.Bytes             `json:"forkId"`
@@ -1556,42 +1556,32 @@ func (api *BlockChainAPI) Config(ctx context.Context) (*configResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to load genesis: %w", err)
 	}
-	assemble := func(c *params.ChainConfig, ts *uint64) *config {
-		if ts == nil {
-			return nil
-		}
-		t := *ts
-
+	assemble := func(c *params.ChainConfig, ts *big.Int) *config {
 		var (
-			rules       = c.Rules(c.LondonBlock, true, t)
+			rules       = c.Rules(c.LondonBlock, true, 0)
 			precompiles = make(map[string]common.Address)
 		)
 		for addr, c := range vm.ActivePrecompiledContracts(rules) {
 			precompiles[c.Name()] = addr
 		}
-		// Activation time is required. If a fork is activated at genesis the value 0 is used
-		activationTime := t
-		if genesis.Time >= t {
-			activationTime = 0
-		}
-		forkid := forkid.NewID(c, types.NewBlockWithHeader(genesis), ^uint64(0), t).Hash
+		forkid := forkid.NewID(c, types.NewBlockWithHeader(genesis), ^uint64(0), ts.Uint64()).Hash
 		return &config{
-			ActivationTime:  activationTime,
-			BlobSchedule:    c.BlobConfig(c.LatestFork(t)),
+			ActivationBlock: *new(big.Int).SetInt64(int64(c.LatestFork(ts.Uint64()))),
+			BlobSchedule:    c.BlobConfig(c.LatestFork(ts.Uint64())),
 			ChainId:         (*hexutil.Big)(c.ChainID),
 			ForkId:          forkid[:],
 			Precompiles:     precompiles,
-			SystemContracts: c.ActiveSystemContracts(t),
+			SystemContracts: c.ActiveSystemContracts(ts.Uint64()),
 		}
 	}
 	var (
 		c = api.b.ChainConfig()
-		t = api.b.CurrentHeader().Time
+		t = api.b.CurrentHeader().Number.Uint64()
 	)
 	resp := configResponse{
-		Next:    assemble(c, c.Timestamp(c.LatestFork(t)+1)),
-		Current: assemble(c, c.Timestamp(c.LatestFork(t))),
-		Last:    assemble(c, c.Timestamp(c.LatestFork(^uint64(0)))),
+		Next:    assemble(c, c.Block(c.LatestFork(t)+1)),
+		Current: assemble(c, c.Block(c.LatestFork(t))),
+		Last:    assemble(c, c.Block(c.LatestFork(^uint64(0)))),
 	}
 	// Nil out last if no future-fork is configured.
 	if resp.Next == nil {
@@ -2083,7 +2073,7 @@ func (api *TransactionAPI) FillTransaction(ctx context.Context, args Transaction
 	sidecarVersion := types.BlobSidecarVersion0
 	if len(args.Blobs) > 0 {
 		h := api.b.CurrentHeader()
-		if api.b.ChainConfig().IsOsaka(h.Number, h.Time) {
+		if api.b.ChainConfig().IsOsaka(h.Number) {
 			sidecarVersion = types.BlobSidecarVersion1
 		}
 	}
@@ -2163,7 +2153,7 @@ func (api *TransactionAPI) SignTransaction(ctx context.Context, args Transaction
 	sidecarVersion := types.BlobSidecarVersion0
 	if len(args.Blobs) > 0 {
 		h := api.b.CurrentHeader()
-		if api.b.ChainConfig().IsOsaka(h.Number, h.Time) {
+		if api.b.ChainConfig().IsOsaka(h.Number) {
 			sidecarVersion = types.BlobSidecarVersion1
 		}
 	}

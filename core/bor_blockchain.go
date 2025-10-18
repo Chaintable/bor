@@ -14,13 +14,13 @@ func (bc *BlockChain) GetBorReceiptByHash(hash common.Hash) *types.Receipt {
 	}
 
 	// read header from hash
-	number := rawdb.ReadHeaderNumber(bc.db, hash)
-	if number == nil {
+	number, found := rawdb.ReadHeaderNumber(bc.db, hash)
+	if !found {
 		return nil
 	}
 
 	// read bor receipt by hash and number
-	receipt := rawdb.ReadBorReceipt(bc.db, hash, *number, bc.chainConfig)
+	receipt := rawdb.ReadBorReceipt(bc.db, hash, number, bc.chainConfig)
 	if receipt == nil {
 		return nil
 	}
@@ -38,13 +38,13 @@ func (bc *BlockChain) GetBorReceiptRLPByHash(hash common.Hash) rlp.RawValue {
 	}
 
 	// read header from hash
-	number := rawdb.ReadHeaderNumber(bc.db, hash)
-	if number == nil {
+	number, found := rawdb.ReadHeaderNumber(bc.db, hash)
+	if !found {
 		return nil
 	}
 
 	// read bor receipt RLP by hash and number
-	receiptRLP := rawdb.ReadBorReceiptRLP(bc.db, hash, *number)
+	receiptRLP := rawdb.ReadBorReceiptRLP(bc.db, hash, number)
 	if receiptRLP == nil {
 		return nil
 	}

@@ -52,7 +52,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/catalyst"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/filters"
@@ -1419,10 +1418,11 @@ func setEtherbase(ctx *cli.Context, cfg *ethconfig.Config) {
 	b, err := hex.DecodeString(addr)
 
 	if err != nil || len(b) != common.AddressLength {
-		Fatalf("-%s: invalid pending block producer address %q", MinerPendingFeeRecipientFlag.Name, addr)
+		Fatalf("-%s: invalid pending block producer address %q", MinerEtherbaseFlag.Name, addr)
 		return
 	}
-	cfg.Miner.PendingFeeRecipient = common.BytesToAddress(b)
+
+	cfg.Miner.Etherbase = common.BytesToAddress(b)
 }
 
 func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {

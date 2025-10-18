@@ -2117,6 +2117,7 @@ func TestInsertReceiptChainRollback(t *testing.T) {
 	testInsertReceiptChainRollback(t, rawdb.PathScheme)
 }
 
+//nolint:unused
 func testInsertReceiptChainRollback(t *testing.T, scheme string) {
 	// Generate forked chain. The returned BlockChain object is used to process the side chain blocks.
 	tmpChain, sideblocks, canonblocks, gspec, err := getLongAndShortChains(scheme)

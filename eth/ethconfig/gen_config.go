@@ -75,7 +75,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		WitnessProtocol         bool
 		SyncWithWitnesses       bool
 		SyncAndProduceWitnesses bool
-		DevFakeAuthor           bool     `hcl:"devfakeauthor,optional" toml:"devfakeauthor,optional"`
+		DevFakeAuthor           bool `hcl:"devfakeauthor,optional" toml:"devfakeauthor,optional"`
 		EnableBlockTracking     bool
 		FastForwardThreshold    uint64
 		WitnessPruneThreshold   uint64
@@ -213,7 +213,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		WitnessProtocol         *bool
 		SyncWithWitnesses       *bool
 		SyncAndProduceWitnesses *bool
-		DevFakeAuthor           *bool    `hcl:"devfakeauthor,optional" toml:"devfakeauthor,optional"`
+		DevFakeAuthor           *bool `hcl:"devfakeauthor,optional" toml:"devfakeauthor,optional"`
 		EnableBlockTracking     *bool
 		FastForwardThreshold    *uint64
 		WitnessPruneThreshold   *uint64

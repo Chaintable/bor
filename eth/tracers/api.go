@@ -205,7 +205,7 @@ type TraceConfig struct {
 	IOFlag  *bool
 	// Config specific to given tracer. Note struct logger
 	// config are historically embedded in main object.
-	TracerConfig json.RawMessage
+	TracerConfig    json.RawMessage
 	BorTraceEnabled *bool
 	BorTx           *bool
 }
@@ -222,8 +222,8 @@ type TraceCallConfig struct {
 // StdTraceConfig holds extra parameters to standard-json trace functions.
 type StdTraceConfig struct {
 	logger.Config
-	Reexec *uint64
-	TxHash common.Hash
+	Reexec          *uint64
+	TxHash          common.Hash
 	BorTraceEnabled *bool
 }
 
@@ -1093,7 +1093,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
 		if txHash != (common.Hash{}) && tx.Hash() != txHash {
 			// Process the tx to update state, but don't trace it.
-			_, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit))
+			_, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit), nil)
 			if err != nil {
 				return dumps, err
 			}
@@ -1137,18 +1137,18 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 			}
 		} else {
 			statedb.SetTxContext(tx.Hash(), i)
-		if tracer.OnTxStart != nil {
-			tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
-		}
+			if tracer.OnTxStart != nil {
+				tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+			}
 
 			// nolint : contextcheck
 			vmRet, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit), nil)
-			if vmConf.Tracer.OnTxEnd != nil {
-				vmConf.Tracer.OnTxEnd(&types.Receipt{GasUsed: vmRet.UsedGas}, err)
+			if tracer.OnTxEnd != nil {
+				tracer.OnTxEnd(&types.Receipt{GasUsed: vmRet.UsedGas}, err)
 			}
-		if writer != nil {
-			writer.Flush()
-		}
+			if writer != nil {
+				writer.Flush()
+			}
 		}
 
 		if dump != nil {
@@ -1208,12 +1208,12 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 				StructLogs: make([]json.RawMessage, 0),
 			}, nil
 		} else {
-		// Warn in case tx indexer is not done.
-		if !api.backend.TxIndexDone() {
-			return nil, ethapi.NewTxIndexingError()
-		}
-		// Only mined txes are supported
-		return nil, errTxNotFound
+			// Warn in case tx indexer is not done.
+			if !api.backend.TxIndexDone() {
+				return nil, ethapi.NewTxIndexingError()
+			}
+			// Only mined txes are supported
+			return nil, errTxNotFound
 		}
 	}
 	// It shouldn't happen in practice.
@@ -1309,8 +1309,16 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 
 	// Apply the customization rules if required.
 	if config != nil {
-		if overrideErr := config.BlockOverrides.Apply(&vmctx); overrideErr != nil {
-			return nil, overrideErr
+		if config.BlockOverrides != nil && config.BlockOverrides.Number.ToInt().Uint64() == h.Number.Uint64()+1 {
+			// Overriding the block number to n+1 is a common way for wallets to
+			// simulate transactions, however without the following fix, a contract
+			// can assert it is being simulated by checking if blockhash(n) == 0x0 and
+			// can behave differently during the simulation. (#32175 for more info)
+			// --
+			// Modify the parent hash and number so that downstream, blockContext's
+			// GetHash function can correctly return n.
+			h.ParentHash = h.Hash()
+			h.Number.Add(h.Number, big.NewInt(1))
 		}
 		if err := config.BlockOverrides.Apply(&blockContext); err != nil {
 			return nil, err

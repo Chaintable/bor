@@ -26,7 +26,7 @@ import (
 // Returns a slotter that can be used for the database.
 func tryMigrate(config *params.ChainConfig, slotter billy.SlotSizeFn, datadir string) (billy.SlotSizeFn, error) {
 	// Check if we need to migrate our blob db to the new slotter.
-	if config.OsakaTime != nil {
+	if config.OsakaBlock != nil {
 		// Open the store using the version slotter to see if any version has been
 		// written.
 		var version int
@@ -42,10 +42,11 @@ func tryMigrate(config *params.ChainConfig, slotter billy.SlotSizeFn, datadir st
 		// If the version found is less than the currently configured store version,
 		// perform a migration then write the updated version of the store.
 		if version < storeVersion {
-			newSlotter := newSlotterEIP7594(eip4844.LatestMaxBlobsPerBlock(config))
-			if err := billy.Migrate(billy.Options{Path: datadir, Repair: true}, slotter, newSlotter); err != nil {
-				return nil, err
-			}
+			// TODO enable and fix?
+			// newSlotter := newSlotterEIP7594(eip4844.LatestMaxBlobsPerBlock(config))
+			//if err := billy.Migrate(billy.Options{Path: datadir, Repair: true}, slotter, newSlotter); err != nil {
+			//	return nil, err
+			//}
 			store, err = billy.Open(billy.Options{Path: datadir}, newVersionSlotter(), nil)
 			if err != nil {
 				return nil, err

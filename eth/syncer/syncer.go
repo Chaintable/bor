@@ -25,7 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
+	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -129,7 +129,7 @@ func (s *Syncer) run() {
 				break
 			}
 			if resync {
-				req.errc <- s.backend.Downloader().BeaconDevSync(ethconfig.FullSync, target)
+				req.errc <- s.backend.Downloader().BeaconDevSync(downloader.FullSync, target)
 			}
 
 		case <-ticker.C:

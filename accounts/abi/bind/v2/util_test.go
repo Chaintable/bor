@@ -64,7 +64,7 @@ func TestWaitDeployed(t *testing.T) {
 		defer backend.Close()
 
 		// Create the transaction
-		head, _ := backend.Client().HeaderByNumber(context.Background(), nil) // Should be child's, good enough
+		head, _ := backend.Client().HeaderByNumber(t.Context(), nil) // Should be child's, good enough
 		gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(params.GWei))
 
 		tx := types.NewContractCreation(0, big.NewInt(0), test.gas, gasPrice, common.FromHex(test.code))
@@ -75,7 +75,7 @@ func TestWaitDeployed(t *testing.T) {
 			err     error
 			address common.Address
 			mined   = make(chan struct{})
-			ctx     = context.Background()
+			ctx     = t.Context()
 		)
 		go func() {
 			address, err = bind.WaitDeployed(ctx, backend.Client(), tx.Hash())

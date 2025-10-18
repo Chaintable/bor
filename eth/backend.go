@@ -127,8 +127,8 @@ type Ethereum struct {
 
 	APIBackend *EthAPIBackend
 
-	miner    *miner.Miner
-	gasPrice *big.Int
+	miner     *miner.Miner
+	gasPrice  *big.Int
 	etherbase common.Address
 
 	networkID     uint64
@@ -309,7 +309,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.ParallelEVM.Enable {
 		eth.blockchain, err = core.NewParallelBlockChain(chainDb, config.Genesis, eth.engine, options, config.ParallelEVM.SpeculativeProcesses, config.ParallelEVM.Enforce)
 	} else {
-	eth.blockchain, err = core.NewBlockChain(chainDb, config.Genesis, eth.engine, options)
+		eth.blockchain, err = core.NewBlockChain(chainDb, config.Genesis, eth.engine, options)
 	}
 
 	if err != nil {
@@ -391,10 +391,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		Chain:                   eth.blockchain,
 		TxPool:                  eth.txPool,
 		Network:                 config.NetworkId,
-		Sync:           config.SyncMode,
-		BloomCache:     uint64(cacheLimit),
-		EventMux:       eth.eventMux,
-		RequiredBlocks: config.RequiredBlocks,
+		Sync:                    config.SyncMode,
+		BloomCache:              uint64(cacheLimit),
+		EventMux:                eth.eventMux,
+		RequiredBlocks:          config.RequiredBlocks,
 		EthAPI:                  blockChainAPI,
 		checker:                 checker,
 		enableBlockTracking:     eth.config.EnableBlockTracking,

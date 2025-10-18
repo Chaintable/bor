@@ -48,12 +48,14 @@ func (bc *BlobConfig) blobBaseFee(excessBlobGas uint64) *big.Int {
 }
 
 // blobPrice returns the price of one blob in Wei.
+//
+//nolint:unused
 func (bc *BlobConfig) blobPrice(excessBlobGas uint64) *big.Int {
 	f := bc.blobBaseFee(excessBlobGas)
 	return new(big.Int).Mul(f, big.NewInt(params.BlobTxBlobGasPerBlob))
 }
 
-func latestBlobConfig(cfg *params.ChainConfig, time uint64) *BlobConfig {
+func latestBlobConfig(cfg *params.ChainConfig, _ uint64) *BlobConfig {
 	if cfg.BlobScheduleConfig == nil {
 		return nil
 	}
@@ -63,21 +65,24 @@ func latestBlobConfig(cfg *params.ChainConfig, time uint64) *BlobConfig {
 		bc     *params.BlobConfig
 	)
 	switch {
-	case cfg.IsBPO5(london, time) && s.BPO5 != nil:
-		bc = s.BPO5
-	case cfg.IsBPO4(london, time) && s.BPO4 != nil:
-		bc = s.BPO4
-	case cfg.IsBPO3(london, time) && s.BPO3 != nil:
-		bc = s.BPO3
-	case cfg.IsBPO2(london, time) && s.BPO2 != nil:
-		bc = s.BPO2
-	case cfg.IsBPO1(london, time) && s.BPO1 != nil:
-		bc = s.BPO1
-	case cfg.IsOsaka(london, time) && s.Osaka != nil:
+	// TODO marcello discarded from geth
+	/*
+		case cfg.IsBPO5(london) && s.BPO5 != nil:
+			bc = s.BPO5
+		case cfg.IsBPO4(london) && s.BPO4 != nil:
+			bc = s.BPO4
+		case cfg.IsBPO3(london) && s.BPO3 != nil:
+			bc = s.BPO3
+		case cfg.IsBPO2(london) && s.BPO2 != nil:
+			bc = s.BPO2
+		case cfg.IsBPO1(london) && s.BPO1 != nil:
+			bc = s.BPO1
+	*/
+	case cfg.IsOsaka(london) && s.Osaka != nil:
 		bc = s.Osaka
-	case cfg.IsPrague(london, time) && s.Prague != nil:
+	case cfg.IsPrague(london) && s.Prague != nil:
 		bc = s.Prague
-	case cfg.IsCancun(london, time) && s.Cancun != nil:
+	case cfg.IsCancun(london) && s.Cancun != nil:
 		bc = s.Cancun
 	default:
 		return nil
@@ -129,7 +134,7 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 // CalcExcessBlobGas calculates the excess blob gas after applying the set of
 // blobs on top of the excess blob gas.
 func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTimestamp uint64) uint64 {
-	isOsaka := config.IsOsaka(config.LondonBlock, headTimestamp)
+	isOsaka := config.IsOsaka(config.LondonBlock)
 	bcfg := latestBlobConfig(config, headTimestamp)
 	return calcExcessBlobGas(isOsaka, bcfg, parent)
 }
@@ -149,19 +154,20 @@ func calcExcessBlobGas(isOsaka bool, bcfg *BlobConfig, parent *types.Header) uin
 		return 0
 	}
 
+	// TODO marcello discarded from geth
 	// EIP-7918 (post-Osaka) introduces a different formula for computing excess,
 	// in cases where the price is lower than a 'reserve price'.
-	if isOsaka {
-		var (
-			baseCost     = big.NewInt(params.BlobBaseCost)
-			reservePrice = baseCost.Mul(baseCost, parent.BaseFee)
-			blobPrice    = bcfg.blobPrice(parentExcessBlobGas)
-		)
-		if reservePrice.Cmp(blobPrice) > 0 {
-			scaledExcess := parentBlobGasUsed * uint64(bcfg.Max-bcfg.Target) / uint64(bcfg.Max)
-			return parentExcessBlobGas + scaledExcess
-		}
-	}
+	//if isOsaka {
+	//	var (
+	//		baseCost     = big.NewInt(params.BlobBaseCost)
+	//		reservePrice = baseCost.Mul(baseCost, parent.BaseFee)
+	//		blobPrice    = bcfg.blobPrice(parentExcessBlobGas)
+	//	)
+	//	if reservePrice.Cmp(blobPrice) > 0 {
+	//		scaledExcess := parentBlobGasUsed * uint64(bcfg.Max-bcfg.Target) / uint64(bcfg.Max)
+	//		return parentExcessBlobGas + scaledExcess
+	//	}
+	//}
 
 	// Original EIP-4844 formula.
 	return excessBlobGas - targetGas

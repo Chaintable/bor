@@ -72,6 +72,8 @@ func TestRequestWitnesses_HasWitPeer_Returns(t *testing.T) {
 // Tests an adversarial scenario where multiples requests could be shot at once
 // It'll be done by spllitting the payload in multiple different pages and then controlling how much are calling the RequestWitness
 func TestRequestWitnesses_Controlling_Max_Concurrent_Calls(t *testing.T) {
+	// TODO marcello fix and enable
+	// t.Skip("bor: fix")
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -90,7 +92,13 @@ func TestRequestWitnesses_Controlling_Max_Concurrent_Calls(t *testing.T) {
 	testPageSize := 200                                                   // 200bytes -> ~ 10*1024/200 ~ 54 pages
 	totalPages := (len(witBuf.Bytes()) + testPageSize - 1) / testPageSize // ceil division len()/pageSize
 
-	randomPageToFailTwice := rand.Intn(totalPages-1) + 1
+	var randomPageToFailTwice int
+	if totalPages > 1 {
+		randomPageToFailTwice = rand.Intn(totalPages-1) + 1
+	} else {
+		randomPageToFailTwice = 0
+	}
+
 	randomFailCount := 0
 	zeroPageFailCount := 0 //page zero is edge case so we will also fail this page in all tests
 	calls := 0
@@ -184,8 +192,8 @@ func FillWitnessWithDeterministicRandomState(w *stateless.Witness, targetSize in
 		}
 
 		// add to witness
-		states := make(map[string]struct{})
-		states[string(buf)] = struct{}{}
+		states := make(map[string][]byte)
+		states[string(buf)] = []byte{}
 		w.AddState(states)
 		total += chunkSize
 	}

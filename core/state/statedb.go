@@ -424,7 +424,7 @@ func (s *StateDB) ApplyMVWriteSet(writes []blockstm.WriteDescriptor) {
 			case NoncePath:
 				s.SetNonce(addr, sr.GetNonce(addr), tracing.NonceChangeUnspecified)
 			case CodePath:
-				s.SetCode(addr, sr.GetCode(addr))
+				s.SetCode(addr, sr.GetCode(addr), tracing.CodeChangeUnspecified)
 			case SuicidePath:
 				stateObject := sr.getStateObject(addr)
 				if stateObject != nil {

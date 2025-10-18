@@ -154,12 +154,12 @@ type Trie interface {
 // state snapshot to provide functionalities for state access. It's meant to be a
 // long-live object and has a few caches inside for sharing between blocks.
 type CachingDB struct {
-	disk          ethdb.KeyValueStore
-	triedb        *triedb.Database
-	snap          *snapshot.Tree
-	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
-	codeSizeCache *lru.Cache[common.Hash, int]
-	pointCache    *utils.PointCache
+	disk            ethdb.KeyValueStore
+	triedb          *triedb.Database
+	snap            *snapshot.Tree
+	codeCache       *lru.SizeConstrainedCache[common.Hash, []byte]
+	codeSizeCache   *lru.Cache[common.Hash, int]
+	pointCache      *utils.PointCache
 	useSnapInReader bool
 
 	// Transition-specific fields
@@ -176,10 +176,9 @@ func NewDatabase(triedb *triedb.Database, snap *snapshot.Tree) *CachingDB {
 		codeSizeCache:          lru.NewCache[common.Hash, int](codeSizeCacheSize),
 		pointCache:             utils.NewPointCache(pointCacheSize),
 		TransitionStatePerRoot: lru.NewCache[common.Hash, *overlay.TransitionState](1000),
-		useSnapInReader: true,
+		useSnapInReader:        true,
 	}
 }
-
 
 func (db *CachingDB) DisableSnapInReader() {
 	db.useSnapInReader = false

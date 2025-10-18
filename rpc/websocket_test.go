@@ -152,7 +152,7 @@ func TestWebsocketLargeRead(t *testing.T) {
 				tt.limit += buffer
 			}
 			opts := []ClientOption{WithWebsocketMessageSizeLimit(int64(tt.limit))}
-			client, err := DialOptions(context.Background(), wsURL, opts...)
+			client, err := DialOptions(t.Context(), wsURL, opts...)
 			if err != nil {
 				t.Fatalf("failed to dial test server: %v", err)
 			}

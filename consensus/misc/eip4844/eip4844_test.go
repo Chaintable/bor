@@ -27,7 +27,17 @@ import (
 
 func TestCalcExcessBlobGas(t *testing.T) {
 	var (
-		config        = params.MainnetChainConfig
+		config = &params.ChainConfig{
+			LondonBlock: big.NewInt(0),
+			CancunBlock: big.NewInt(0),
+			BlobScheduleConfig: &params.BlobScheduleConfig{
+				Cancun: &params.BlobConfig{
+					Target:         3,
+					Max:            6,
+					UpdateFraction: 3338477,
+				},
+			},
+		}
 		targetBlobs   = config.BlobScheduleConfig.Cancun.Target
 		targetBlobGas = uint64(targetBlobs) * params.BlobTxBlobGasPerBlob
 	)
@@ -92,10 +102,7 @@ func TestCalcBlobFee(t *testing.T) {
 }
 
 func TestCalcBlobFeePostOsaka(t *testing.T) {
-	zero := uint64(0)
-	bpo1 := uint64(1754836608)
-	bpo2 := uint64(1754934912)
-	bpo3 := uint64(1755033216)
+	zero := big.NewInt(0)
 
 	tests := []struct {
 		excessBlobGas uint64
@@ -105,37 +112,19 @@ func TestCalcBlobFeePostOsaka(t *testing.T) {
 		parenttime    uint64
 		headertime    uint64
 	}{
-		{5149252, 1310720, 5617366, 30, 1754904516, 1754904528},
-		{19251039, 2490368, 20107103, 50, 1755033204, 1755033216},
+		{5149252, 1310720, 5673540, 30, 1754904516, 1754904528},
+		{19251039, 2490368, 20954975, 50, 1755033204, 1755033216},
 	}
 	for i, tt := range tests {
 		config := &params.ChainConfig{
 			LondonBlock: big.NewInt(0),
-			CancunTime:  &zero,
-			PragueTime:  &zero,
-			OsakaTime:   &zero,
-			BPO1Time:    &bpo1,
-			BPO2Time:    &bpo2,
-			BPO3Time:    &bpo3,
+			CancunBlock: zero,
+			PragueBlock: zero,
+			OsakaBlock:  zero,
 			BlobScheduleConfig: &params.BlobScheduleConfig{
 				Cancun: params.DefaultCancunBlobConfig,
 				Prague: params.DefaultPragueBlobConfig,
 				Osaka:  params.DefaultOsakaBlobConfig,
-				BPO1: &params.BlobConfig{
-					Target:         9,
-					Max:            14,
-					UpdateFraction: 8832827,
-				},
-				BPO2: &params.BlobConfig{
-					Target:         14,
-					Max:            21,
-					UpdateFraction: 13739630,
-				},
-				BPO3: &params.BlobConfig{
-					Target:         21,
-					Max:            32,
-					UpdateFraction: 20609697,
-				},
 			}}
 		parent := &types.Header{
 			ExcessBlobGas: &tt.excessBlobGas,
@@ -194,6 +183,8 @@ func TestFakeExponential(t *testing.T) {
 }
 
 func TestCalcExcessBlobGasEIP7918(t *testing.T) {
+	// TODO marcello: discarded from geth
+	t.Skip("bor: not relevant")
 	var (
 		cfg           = params.MergedTestChainConfig
 		targetBlobs   = cfg.BlobScheduleConfig.Osaka.Target
@@ -226,7 +217,7 @@ func TestCalcExcessBlobGasEIP7918(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
-		got := CalcExcessBlobGas(cfg, tc.header, *cfg.CancunTime)
+		got := CalcExcessBlobGas(cfg, tc.header, cfg.CancunBlock.Uint64())
 		if got != tc.wantExcessGas {
 			t.Fatalf("%s: excess-blob-gas mismatch – have %d, want %d",
 				tc.name, got, tc.wantExcessGas)

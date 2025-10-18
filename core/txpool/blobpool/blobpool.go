@@ -100,6 +100,7 @@ const (
 	// conversionTimeWindow defines the period after the Osaka fork during which
 	// the pool will still accept and convert legacy blob transactions. After this
 	// window, all legacy blob transactions will be rejected.
+	//nolint:unused
 	conversionTimeWindow = time.Hour * 2
 )
 
@@ -869,7 +870,7 @@ func (p *BlobPool) Reset(oldHead, newHead *types.Header) {
 		}
 	}
 	// Flush out any blobs from limbo that are older than the latest finality
-	if p.chain.Config().IsCancun(newHead.Number, newHead.Time) {
+	if p.chain.Config().IsCancun(newHead.Number) {
 		p.limbo.finalize(p.chain.CurrentFinalBlock())
 	}
 	// Reset the price heap for the new set of basefee/blobfee pairs
@@ -887,7 +888,7 @@ func (p *BlobPool) Reset(oldHead, newHead *types.Header) {
 	p.updateStorageMetrics()
 
 	// Perform the conversion logic at the fork boundary
-	if !p.chain.Config().IsOsaka(oldHead.Number, oldHead.Time) && p.chain.Config().IsOsaka(newHead.Number, newHead.Time) {
+	if !p.chain.Config().IsOsaka(oldHead.Number) && p.chain.Config().IsOsaka(newHead.Number) {
 		// Deep copy all indexed transaction metadata.
 		var (
 			ids = make(map[common.Address]map[uint64]uint64)
@@ -1206,7 +1207,7 @@ func (p *BlobPool) reinject(addr common.Address, txhash common.Hash) error {
 	// could theoretically halt a Geth node for ~1.2s by reorging per block. However,
 	// this attack is financially inefficient to execute.
 	head := p.head.Load()
-	if p.chain.Config().IsOsaka(head.Number, head.Time) && tx.BlobTxSidecar().Version == types.BlobSidecarVersion0 {
+	if p.chain.Config().IsOsaka(head.Number) && tx.BlobTxSidecar().Version == types.BlobSidecarVersion0 {
 		if err := tx.BlobTxSidecar().ToV1(); err != nil {
 			log.Error("Failed to convert the legacy sidecar", "err", err)
 			return err
@@ -1647,12 +1648,9 @@ func (p *BlobPool) AvailableBlobs(vhashes []common.Hash) int {
 func (p *BlobPool) preCheck(tx *types.Transaction) error {
 	var (
 		head     = p.head.Load()
-		isOsaka  = p.chain.Config().IsOsaka(head.Number, head.Time)
+		isOsaka  = p.chain.Config().IsOsaka(head.Number)
 		deadline time.Time
 	)
-	if isOsaka {
-		deadline = time.Unix(int64(*p.chain.Config().OsakaTime), 0).Add(conversionTimeWindow)
-	}
 	// Validate the transaction statically at first to avoid unnecessary
 	// conversion. This step doesn't require lock protection.
 	if err := p.ValidateTxBasics(tx); err != nil {
@@ -1685,8 +1683,8 @@ func (p *BlobPool) preCheck(tx *types.Transaction) error {
 // consensus validity and pool restrictions).
 func (p *BlobPool) Add(txs []*types.Transaction, sync bool) []error {
 	var (
-		errs []error = make([]error, len(txs))
-		adds         = make([]*types.Transaction, 0, len(txs))
+		errs = make([]error, len(txs))
+		adds = make([]*types.Transaction, 0, len(txs))
 	)
 	for i, tx := range txs {
 		if errs[i] = p.preCheck(tx); errs[i] != nil {

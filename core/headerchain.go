@@ -66,7 +66,7 @@ type HeaderChain struct {
 
 	headerCache *lru.Cache[common.Hash, *types.Header]
 	tdCache     *lru.Cache[common.Hash, *big.Int] // most recent total difficulties
-	numberCache *lru.Cache[common.Hash, uint64] // most recent block numbers
+	numberCache *lru.Cache[common.Hash, uint64]   // most recent block numbers
 
 	procInterrupt func() bool
 	engine        consensus.Engine

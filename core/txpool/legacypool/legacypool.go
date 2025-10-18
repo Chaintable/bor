@@ -124,7 +124,7 @@ var (
 	slotsGauge   = metrics.NewRegisteredGauge("txpool/slots", nil)
 
 	resetCacheGauge = metrics.NewRegisteredGauge("txpool/resetcache", nil)
-	reheapTimer = metrics.NewRegisteredTimer("txpool/reheap", nil)
+	reheapTimer     = metrics.NewRegisteredTimer("txpool/reheap", nil)
 
 	// pendingLockWaitTimer measures how long it took to acquire the pending lock. This is useful
 	// to understand delay in block building and the impact of lock acquisition.
@@ -165,7 +165,7 @@ type Config struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
+	Lifetime            time.Duration // Maximum amount of time non-executable transaction are queued
 	AllowUnprotectedTxs bool          // Allow non-EIP-155 transactions
 
 	// Transaction filtering configuration
@@ -185,7 +185,7 @@ var DefaultConfig = Config{
 	AccountQueue: 64,
 	GlobalQueue:  1024,
 
-	Lifetime: 3 * time.Hour,
+	Lifetime:            3 * time.Hour,
 	AllowUnprotectedTxs: false,
 }
 
@@ -621,7 +621,7 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter, interrupt *atomic.B
 // and does not require the pool mutex to be held.
 func (pool *LegacyPool) ValidateTxBasics(tx *types.Transaction) error {
 	opts := &txpool.ValidationOptions{
-		Config: pool.chainconfig,
+		Config:              pool.chainconfig,
 		AllowUnprotectedTxs: pool.config.AllowUnprotectedTxs,
 		Accept: 0 |
 			1<<types.LegacyTxType |
@@ -1377,7 +1377,7 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 	if reset != nil {
 		if reset.newHead != nil && reset.oldHead != nil {
 			// Discard the transactions with the gas limit higher than the cap.
-			if pool.chainconfig.IsOsaka(reset.newHead.Number, reset.newHead.Time) && !pool.chainconfig.IsOsaka(reset.oldHead.Number, reset.oldHead.Time) {
+			if pool.chainconfig.IsOsaka(reset.newHead.Number) && !pool.chainconfig.IsOsaka(reset.oldHead.Number) {
 				var hashes []common.Hash
 				pool.all.Range(func(hash common.Hash, tx *types.Transaction) bool {
 					if tx.Gas() > params.MaxTxGas {
@@ -1762,7 +1762,8 @@ func (pool *LegacyPool) demoteUnexecutables() {
 	nonces := make(map[common.Address]uint64, len(pool.pending))
 
 	// Iterate over all accounts and demote any non-executable transactions
-	gasLimit := pool.currentHead.Load().GasLimit
+	currentHeader := pool.currentHead.Load()
+	gasLimit := currentHeader.GasLimit
 	for addr, list := range pool.pending {
 		nonce := pool.currentState.GetNonce(addr)
 

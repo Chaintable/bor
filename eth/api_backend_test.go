@@ -135,7 +135,7 @@ func TestSendTxEIP2681(t *testing.T) {
 
 	// Test EIP-2681: nonce overflow should be rejected
 	tx := makeTx(uint64(math.MaxUint64), nil, nil, key) // max uint64 nonce
-	err := b.SendTx(context.Background(), tx)
+	err := b.SendTx(t.Context(), tx)
 	if err == nil {
 		t.Fatal("Expected EIP-2681 nonce overflow error, but transaction was accepted")
 	}
@@ -145,7 +145,7 @@ func TestSendTxEIP2681(t *testing.T) {
 
 	// Test normal case: should succeed
 	normalTx := makeTx(0, nil, nil, key)
-	err = b.SendTx(context.Background(), normalTx)
+	err = b.SendTx(t.Context(), normalTx)
 	if err != nil {
 		t.Errorf("Normal transaction should succeed, got error: %v", err)
 	}

@@ -23,7 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/stateless"
-	balance_tracing "github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/tracing"
 
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/bor/api"
@@ -1083,11 +1083,11 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state vm.StateDB) 
 
 			for addr, account := range allocs {
 				log.Info("change contract code", "address", addr)
-				state.SetCode(addr, account.Code)
+				state.SetCode(addr, account.Code, tracing.CodeChangeContractCreation)
 
 				if state.GetBalance(addr).Cmp(uint256.NewInt(0)) == 0 {
 					// todo: @anshalshukla - check tracing reason
-					state.SetBalance(addr, uint256.NewInt(account.Balance.Uint64()), balance_tracing.BalanceChangeUnspecified)
+					state.SetBalance(addr, uint256.NewInt(account.Balance.Uint64()), tracing.BalanceChangeUnspecified)
 				}
 			}
 		}
@@ -1347,7 +1347,7 @@ func (c *Bor) checkAndCommitSpan(
 
 	tempState := state.Inner().Copy()
 	tempState.ResetPrefetcher()
-	tempState.StartPrefetcher("bor", state.Witness())
+	tempState.StartPrefetcher("bor", state.Witness(), nil)
 
 	span, err := c.spanner.GetCurrentSpan(ctx, header.ParentHash, tempState)
 	if err != nil {
@@ -1492,7 +1492,7 @@ func (c *Bor) CommitStates(
 		// Fetch the LastStateId from contract via current state instance
 		tempState := state.Inner().Copy()
 		tempState.ResetPrefetcher()
-		tempState.StartPrefetcher("bor", state.Witness())
+		tempState.StartPrefetcher("bor", state.Witness(), nil)
 
 		lastStateIDBig, err = c.GenesisContractsClient.LastStateId(tempState, number-1, header.ParentHash)
 		if err != nil {

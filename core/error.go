@@ -32,6 +32,8 @@ var (
 	// ErrNoGenesis is returned when there is no Genesis Block.
 	ErrNoGenesis = errors.New("genesis not found in chain")
 
+	errSideChainReceipts = errors.New("side blocks can't be accepted as ancient chain data")
+
 	// ErrBlockOversized is returned if the size of the RLP-encoded block
 	// exceeds the cap established by EIP 7934
 	ErrBlockOversized = errors.New("block RLP-encoded size exceeds maximum")

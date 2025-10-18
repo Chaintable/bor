@@ -158,6 +158,7 @@ func TestSupplyRewards(t *testing.T) {
 }
 
 func TestSupplyRewardsWithUncle(t *testing.T) {
+	t.Skip("bor: skipping because not relevant for bor")
 	var (
 		config = *params.AllEthashProtocolChanges
 

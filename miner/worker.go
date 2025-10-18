@@ -120,6 +120,51 @@ type environment struct {
 	witness             *stateless.Witness
 }
 
+// copy creates a deep copy of environment.
+func (env *environment) copy() *environment {
+	cpy := &environment{
+		signer:              env.signer,
+		state:               env.state.Copy(),
+		tcount:              env.tcount,
+		coinbase:            env.coinbase,
+		header:              types.CopyHeader(env.header),
+		receipts:            copyReceipts(env.receipts),
+		depsMVFullWriteList: env.depsMVFullWriteList,
+		mvReadMapList:       env.mvReadMapList,
+	}
+
+	if env.gasPool != nil {
+		gasPool := *env.gasPool
+		cpy.gasPool = &gasPool
+	}
+	cpy.txs = make([]*types.Transaction, len(env.txs))
+	copy(cpy.txs, env.txs)
+
+	cpy.sidecars = make([]*types.BlobTxSidecar, len(env.sidecars))
+	copy(cpy.sidecars, env.sidecars)
+
+	return cpy
+}
+
+// discard terminates the background prefetcher go-routine. It should
+// always be called for all created environment instances otherwise
+// the go-routine leak can happen.
+func (env *environment) discard() {
+	if env.state == nil {
+		return
+	}
+
+	env.state.StopPrefetcher()
+}
+
+// task contains all information for consensus engine sealing and result submitting.
+type task struct {
+	receipts  []*types.Receipt
+	state     *state.StateDB
+	block     *types.Block
+	createdAt time.Time
+}
+
 // txFits reports whether the transaction fits into the block size limit.
 func (env *environment) txFitsSize(tx *types.Transaction) bool {
 	return env.size+tx.Size() < params.MaxBlockSize-maxBlockSizeBufferZone
@@ -136,6 +181,13 @@ const (
 // try to say below the size including a buffer zone, this is to avoid going over the
 // maximum size with auxiliary data added into the block.
 const maxBlockSizeBufferZone = 1_000_000
+
+// newWorkReq represents a request for new sealing work submitting with relative interrupt notifier.
+type newWorkReq struct {
+	interrupt *atomic.Int32
+	noempty   bool
+	timestamp int64
+}
 
 // newPayloadResult is the result of payload generation.
 type newPayloadResult struct {
@@ -663,7 +715,6 @@ func (w *worker) mainLoop() {
 					w.commitWork(nil, true, time.Now().Unix())
 				}
 			}
-	body := types.Body{Transactions: work.txs, Withdrawals: genParam.withdrawals}
 
 			w.newTxs.Add(int32(len(ev.Txs)))
 
@@ -1387,10 +1438,15 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 		filter.BaseFee = uint256.MustFromBig(env.header.BaseFee)
 	}
 
-	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
+	filter.BlobTxs = false
 	pendingPlainTxs := w.eth.TxPool().Pending(filter, &w.interruptBlockBuilding)
 
-	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
+	filter.BlobTxs = true
+	if w.chainConfig.IsOsaka(env.header.Number) {
+		filter.BlobVersion = types.BlobSidecarVersion1
+	} else {
+		filter.BlobVersion = types.BlobSidecarVersion0
+	}
 	pendingBlobTxs := w.eth.TxPool().Pending(filter, &w.interruptBlockBuilding)
 
 	// Split the pending transactions into locals and remotes.

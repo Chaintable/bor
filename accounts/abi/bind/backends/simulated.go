@@ -927,24 +927,24 @@ func (fb *filterBackend) PendingBlockAndReceipts() (*types.Block, types.Receipts
 	return fb.backend.pendingBlock, fb.backend.pendingReceipts
 }
 
-func (fb *filterBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.Receipts, error) {
-	number := rawdb.ReadHeaderNumber(fb.db, hash)
-	if number == nil {
+func (fb *filterBackend) GetReceipts(_ context.Context, hash common.Hash) (types.Receipts, error) {
+	number, found := rawdb.ReadHeaderNumber(fb.db, hash)
+	if !found {
 		return nil, nil
 	}
-	header := rawdb.ReadHeader(fb.db, hash, *number)
+	header := rawdb.ReadHeader(fb.db, hash, number)
 	if header == nil {
 		return nil, nil
 	}
-	return rawdb.ReadReceipts(fb.db, hash, *number, header.Time, fb.bc.Config()), nil
+	return rawdb.ReadReceipts(fb.db, hash, number, header.Time, fb.bc.Config()), nil
 }
 
-func (fb *filterBackend) GetLogs(ctx context.Context, hash common.Hash, number uint64) ([][]*types.Log, error) {
+func (fb *filterBackend) GetLogs(_ context.Context, hash common.Hash, number uint64) ([][]*types.Log, error) {
 	logs := rawdb.ReadLogs(fb.db, hash, number)
 	return logs, nil
 }
 
-func (fb *filterBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
+func (fb *filterBackend) SubscribeNewTxsEvent(_ chan<- core.NewTxsEvent) event.Subscription {
 	return nullSubscription()
 }
 

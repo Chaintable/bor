@@ -185,6 +185,7 @@ const (
 	BlobTxMinBlobGasprice              = 1       // Minimum gas price for data blobs
 	BlobTxPointEvaluationPrecompileGas = 50000   // Gas price for the point evaluation precompile.
 	BlobTxMaxBlobs                     = 6
+	// TODO marcello discarded from geth
 	BlobBaseCost                       = 1 << 13 // Base execution gas cost for a blob.
 
 	HistoryServeWindow = 8191 // Number of blocks to serve historical block hashes for, EIP-2935.

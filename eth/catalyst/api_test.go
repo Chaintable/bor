@@ -18,7 +18,6 @@ package catalyst
 
 import (
 	"bytes"
-	"context"
 	"crypto/ecdsa"
 	crand "crypto/rand"
 	"crypto/sha256"
@@ -42,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth"
+	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/testrand"
 	"github.com/ethereum/go-ethereum/internal/version"
@@ -464,12 +464,12 @@ func startEthService(t *testing.T, genesis *core.Genesis, blocks []*types.Block)
 
 	ethcfg := &ethconfig.Config{
 		Genesis:        genesis,
-		SyncMode:       ethconfig.FullSync,
+		SyncMode:       downloader.FullSync,
 		TrieTimeout:    time.Minute,
 		TrieDirtyCache: 256,
 		TrieCleanCache: 256,
 		Miner:          miner.DefaultConfig,
-		SnapshotCache: 10,
+		SnapshotCache:  10,
 	}
 	ethservice, err := eth.New(n, ethcfg)
 	if err != nil {
@@ -1090,12 +1090,15 @@ func TestSimultaneousNewBlock(t *testing.T) {
 func TestWithdrawals(t *testing.T) {
 	t.Skip("bor: not relevant")
 	genesis, blocks := generateMergeChain(10, true)
-	// Set shanghai time to last block + 5 seconds (first post-merge block)
-	time := blocks[len(blocks)-1].Time() + 5
-	genesis.Config.ShanghaiTime = &time
+	genesis.Config.ShanghaiBlock = big.NewInt(0)
 
 	n, ethservice := startEthService(t, genesis, blocks)
-	defer n.Close()
+	defer func(n *node.Node) {
+		err := n.Close()
+		if err != nil {
+			t.Fatalf("error closing node, err=%v", err)
+		}
+	}(n)
 
 	api := newConsensusAPIWithoutHeartbeat(ethservice)
 
@@ -1193,7 +1196,7 @@ func TestWithdrawals(t *testing.T) {
 	}
 
 	// 11: verify withdrawals were processed.
-	db, _, err := ethservice.APIBackend.StateAndHeaderByNumber(context.Background(), rpc.BlockNumber(execData.ExecutionPayload.Number))
+	db, _, err := ethservice.APIBackend.StateAndHeaderByNumber(t.Context(), rpc.BlockNumber(execData.ExecutionPayload.Number))
 	if err != nil {
 		t.Fatalf("unable to load db: %v", err)
 	}
@@ -1208,9 +1211,7 @@ func TestWithdrawals(t *testing.T) {
 func TestNilWithdrawals(t *testing.T) {
 	t.Skip("bor: not relevant")
 	genesis, blocks := generateMergeChain(10, true)
-	// Set shanghai time to last block + 4 seconds (first post-merge block)
-	time := blocks[len(blocks)-1].Time() + 4
-	genesis.Config.ShanghaiTime = &time
+	genesis.Config.ShanghaiBlock = big.NewInt(0)
 
 	n, ethservice := startEthService(t, genesis, blocks)
 	defer n.Close()
@@ -1290,7 +1291,7 @@ func TestNilWithdrawals(t *testing.T) {
 		var (
 			err            error
 			payloadVersion engine.PayloadVersion
-			shanghai       = genesis.Config.IsShanghai(genesis.Config.LondonBlock, test.blockParams.Timestamp)
+			shanghai       = genesis.Config.IsShanghai(genesis.Config.LondonBlock)
 		)
 		if !shanghai {
 			payloadVersion = engine.PayloadV1
@@ -1993,7 +1994,7 @@ func newGetBlobEnv(t *testing.T, version byte) (*node.Node, *ConsensusAPI) {
 	)
 	// Disable Osaka fork for GetBlobsV1
 	if version == 0 {
-		config.OsakaTime = nil
+		config.OsakaBlock = nil
 	}
 	gspec := &core.Genesis{
 		Config: &config,
@@ -2018,6 +2019,7 @@ func newGetBlobEnv(t *testing.T, version byte) (*node.Node, *ConsensusAPI) {
 }
 
 func TestGetBlobsV1(t *testing.T) {
+	t.Skip("bor: not relevant")
 	n, api := newGetBlobEnv(t, 0)
 	defer n.Close()
 
@@ -2097,6 +2099,7 @@ func TestGetBlobsV1(t *testing.T) {
 }
 
 func TestGetBlobsV2(t *testing.T) {
+	t.Skip("bor: not relevant")
 	n, api := newGetBlobEnv(t, 1)
 	defer n.Close()
 

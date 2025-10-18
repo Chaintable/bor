@@ -808,7 +808,7 @@ func opCall(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
 	if !value.IsZero() {
 		gas += params.CallStipend
 	}
-	ret, returnGas, err := evm.Call(scope.Contract.Address(), toAddr, args, gas, &value)
+	ret, returnGas, err := evm.Call(scope.Contract.Address(), toAddr, args, gas, &value, nil)
 
 	if err != nil {
 		temp.Clear()
