@@ -30,7 +30,6 @@ type insertStats struct {
 	//nolint:unused
 	queued, processed, ignored int
 	usedGas                    uint64
-	lastIndex                  int
 	startTime                  mclock.AbsTime
 }
 
@@ -49,9 +48,9 @@ func (st *insertStats) report(chain []*types.Block, index int, snapDiffItems, sn
 	)
 	// If we're at the last block of the batch or report period reached, log
 	if index == len(chain)-1 || elapsed >= statsReportLimit {
-		// Count the number of transactions in this segment
+		// Count the number of transactions processed in this segment
 		var txs int
-		for _, block := range chain[st.lastIndex : index+1] {
+		for _, block := range chain[(index+1)-st.processed : index+1] {
 			txs += len(block.Transactions())
 		}
 
@@ -95,7 +94,7 @@ func (st *insertStats) report(chain []*types.Block, index int, snapDiffItems, sn
 			}
 		}
 		// Bump the stats reported to the next section
-		*st = insertStats{startTime: now, lastIndex: index + 1}
+		*st = insertStats{startTime: now}
 	}
 }
 

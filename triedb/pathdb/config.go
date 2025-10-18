@@ -77,9 +77,10 @@ type Config struct {
 	JournalDirectory    string // Absolute path of journal directory (null means the journal data is persisted in key-value store)
 
 	// Testing configurations
-	SnapshotNoBuild   bool // Flag Whether the state generation is disabled
-	NoAsyncFlush      bool // Flag whether the background buffer flushing is disabled
-	NoAsyncGeneration bool // Flag whether the background generation is disabled
+	SnapshotNoBuild   bool   // Flag Whether the state generation is disabled
+	NoAsyncFlush      bool   // Flag whether the background buffer flushing is disabled
+	NoAsyncGeneration bool   // Flag whether the background generation is disabled
+	MaxDiffLayers     uint64 // Maximum diff layers allowed in the layer tree
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -93,7 +94,7 @@ func (c *Config) sanitize() *Config {
 	return &conf
 }
 
-// fields returns a list of attributes of config for printing.
+// fields returns the attributes' list of config for printing.
 func (c *Config) fields() []interface{} {
 	var list []interface{}
 	if c.ReadOnly {

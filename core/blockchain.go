@@ -182,6 +182,7 @@ type BlockChainConfig struct {
 	TrieTimeLimit        time.Duration // Time limit after which to flush the current in-memory trie to disk
 	TrieNoAsyncFlush     bool          // Whether the asynchronous buffer flushing is disallowed
 	TrieJournalDirectory string        // Directory path to the journal used for persisting trie data across node restarts
+	TriesInMemory        uint64        // Number of recent tries to keep in memory
 
 	Preimages   bool   // Whether to store preimage of trie key to the disk
 	StateScheme string // Scheme used to store ethereum states and merkle tree nodes on top
@@ -231,6 +232,7 @@ func DefaultConfig() *BlockChainConfig {
 		TrieCleanLimit:   256,
 		TrieDirtyLimit:   256,
 		TrieTimeLimit:    5 * time.Minute,
+		TriesInMemory:    state.TriesInMemory,
 		StateScheme:      rawdb.HashScheme,
 		SnapshotLimit:    256,
 		SnapshotWait:     true,
@@ -260,6 +262,14 @@ func (cfg BlockChainConfig) WithNoAsyncFlush(on bool) *BlockChainConfig {
 	return &cfg
 }
 
+// GetTriesInMemory returns the safe value of tries in memory (defaults to [state.TriesInMemory])
+func (cfg BlockChainConfig) GetTriesInMemory() uint64 {
+	if cfg.TriesInMemory == 0 {
+		return state.TriesInMemory
+	}
+	return cfg.TriesInMemory
+}
+
 // triedbConfig derives the configures for trie database.
 func (cfg *BlockChainConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	config := &triedb.Config{
@@ -277,6 +287,7 @@ func (cfg *BlockChainConfig) triedbConfig(isVerkle bool) *triedb.Config {
 			EnableStateIndexing: cfg.ArchiveMode,
 			TrieCleanSize:       cfg.TrieCleanLimit * 1024 * 1024,
 			StateCleanSize:      cfg.SnapshotLimit * 1024 * 1024,
+			MaxDiffLayers:       cfg.GetTriesInMemory(),
 			JournalDirectory:    cfg.TrieJournalDirectory,
 
 			// TODO(rjl493456442): The write buffer represents the memory limit used
@@ -626,10 +637,9 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	return bc, nil
 }
 
-// NewParallelBlockChain , similar to NewBlockChain, creates a new blockchain object, but with a parallel state processor
+// NewParallelBlockChain, similar to NewBlockChain, creates a new blockchain object, but with a parallel state processor
 func NewParallelBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine, cfg *BlockChainConfig, numprocs int, enforce bool) (*BlockChain, error) {
 	bc, err := NewBlockChain(db, genesis, engine, cfg)
-
 	if err != nil {
 		return nil, err
 	}
@@ -799,6 +809,7 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header, wit
 
 	return result.receipts, result.logs, result.usedGas, result.statedb, vtime, result.err
 }
+
 func (bc *BlockChain) setupSnapshot() {
 	// Short circuit if the chain is established with path scheme, as the
 	// state snapshot has been integrated into path database natively.
@@ -1613,7 +1624,8 @@ func (bc *BlockChain) Stop() {
 		if !bc.cfg.ArchiveMode {
 			triedb := bc.triedb
 
-			for _, offset := range []uint64{0, 1, state.TriesInMemory - 1} {
+			triesInMemory := bc.cfg.GetTriesInMemory()
+			for _, offset := range []uint64{0, 1, triesInMemory - 1} {
 				if number := bc.CurrentBlock().Number.Uint64(); number > offset {
 					recent := bc.GetBlockByNumber(number - offset)
 
@@ -1680,6 +1692,98 @@ const (
 	CanonStatTy
 	SideStatTy
 )
+
+// getReceiptFields given a list of normal receipts returns the tx index, the log index
+// and cumulative gas used for populating the bor receipt.
+func getReceiptFields(receipts []*types.ReceiptForStorage) (int, int, uint64) {
+	if len(receipts) == 0 {
+		return 0, 0, 0
+	}
+
+	logs := 0
+	for _, receipt := range receipts {
+		logs += len(receipt.Logs)
+	}
+
+	cumulativeGasUsed := receipts[len(receipts)-1].CumulativeGasUsed
+
+	return len(receipts), logs, cumulativeGasUsed
+}
+
+// isStateSyncReceiptPresent checks if a state-sync receipt is present in the list of
+// receipts or not.
+func isStateSyncReceiptPresent(decoded []*types.ReceiptForStorage) bool {
+	if len(decoded) == 0 {
+		return false
+	}
+
+	// The state-sync receipt can either have a 0 cumulative gas used (this depends on the remote peer) or
+	// have the same cumulative gas used as the previous receipt as state-sync transactions uses 0 gas and
+	// hence they don't contribute to the cumulative gas used value.
+	if decoded[len(decoded)-1].CumulativeGasUsed == 0 {
+		return true
+	}
+
+	if len(decoded) >= 2 && decoded[len(decoded)-1].CumulativeGasUsed == decoded[len(decoded)-2].CumulativeGasUsed {
+		return true
+	}
+
+	return false
+}
+
+// splitReceiptsAndDeriveFields separates out the state-sync receipt from the whole receipt list
+// of a block and returns the encoded lists back separately. If a state-sync receipt is found, it
+// derives the necessary fields and populates them. In case of errors or empty receipt, it returns
+// `nil` instead of `rlp.EncodeToBytes(nil)`.
+func splitReceiptsAndDeriveFields(receipts rlp.RawValue, number uint64, hash common.Hash, borCfg *params.BorConfig) (rlp.RawValue, rlp.RawValue) {
+	if receipts == nil {
+		return nil, nil
+	}
+
+	// Bor receipts can only exist on sprint end blocks. Avoid decoding if possible.
+	if !types.IsSprintEndBlock(borCfg, number) {
+		return receipts, nil
+	}
+
+	var decoded []*types.ReceiptForStorage
+	if err := rlp.DecodeBytes(receipts, &decoded); err != nil {
+		log.Warn("Failed to decode block receipts", "number", number, "hash", hash, "err", err)
+		return receipts, nil
+	}
+
+	// Split receipts only if there's a state-sync receipt present
+	if isStateSyncReceiptPresent(decoded) {
+		borReceipt := decoded[len(decoded)-1]
+
+		// Derive rest of fields for bor receipts before encoding back
+		txIndex, logIndex, cumulativeGasUsed := getReceiptFields(decoded[:len(decoded)-1])
+		types.DeriveFieldsForBorLogs(borReceipt.Logs, hash, number, uint(txIndex), uint(logIndex))
+		borReceipt.Status = types.ReceiptStatusSuccessful
+		borReceipt.CumulativeGasUsed = cumulativeGasUsed
+
+		// Encode the state-sync transaction receipt separately
+		encodedStateSyncReceipt, err := rlp.EncodeToBytes(borReceipt)
+		if err != nil {
+			log.Warn("Failed to encode state-sync receipt", "number", number, "hash", hash, "err", err)
+			return receipts, nil
+		}
+
+		// If no receipts left, return
+		if len(decoded[:len(decoded)-1]) == 0 {
+			return nil, encodedStateSyncReceipt
+		}
+
+		// Encode back the normal (non state-sync) receipts and return
+		encodedReceipts, err := rlp.EncodeToBytes(decoded[:len(decoded)-1])
+		if err != nil {
+			log.Warn("Failed to encode remaining receipts after excluding state-sync receipt", "number", number, "hash", hash, "err", err)
+			return receipts, encodedStateSyncReceipt
+		}
+		return encodedReceipts, encodedStateSyncReceipt
+	}
+
+	return receipts, nil
+}
 
 // InsertReceiptChain attempts to complete an already existing header chain with
 // transaction and receipt data.
@@ -1785,14 +1889,15 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 				log.Info("Wrote genesis to ancients")
 			}
 		}
-		// BOR: Retrieve all the bor receipts and also maintain the array of headers
-		// for bor specific reorg check.
-		borReceipts := []rlp.RawValue{}
+
+		// Separate out bor receipts (i.e. receipts of state-sync transactions)
+		borReceipts := make([]rlp.RawValue, len(receiptChain))
+		for i, receipts := range receiptChain {
+			receiptChain[i], borReceipts[i] = splitReceiptsAndDeriveFields(receipts, blockChain[i].NumberU64(), blockChain[i].Hash(), bc.chainConfig.Bor)
+		}
 
 		var headers []*types.Header
-
 		for _, block := range blockChain {
-			borReceipts = append(borReceipts, bc.GetBorReceiptRLPByHash(block.Hash()))
 			headers = append(headers, block.Header())
 		}
 
@@ -1820,8 +1925,14 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		for i, block := range blockChain {
 			if bc.txIndexer == nil || bc.txIndexer.limit == 0 || ancientLimit <= bc.txIndexer.limit || block.NumberU64() >= ancientLimit-bc.txIndexer.limit {
 				rawdb.WriteTxLookupEntriesByBlock(batch, block)
+				if len(borReceipts[i]) > 0 {
+					rawdb.WriteBorTxLookupEntry(batch, block.Hash(), block.NumberU64())
+				}
 			} else if rawdb.ReadTxIndexTail(bc.db) != nil {
 				rawdb.WriteTxLookupEntriesByBlock(batch, block)
+				if len(borReceipts[i]) > 0 {
+					rawdb.WriteBorTxLookupEntry(batch, block.Hash(), block.NumberU64())
+				}
 			}
 
 			stats.processed++
@@ -1859,9 +1970,9 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		}
 
 		// Delete block data from the main database.
-		var (
-			canonHashes = make(map[common.Hash]struct{}, len(blockChain))
-		)
+
+		canonHashes := make(map[common.Hash]struct{}, len(blockChain))
+
 		batch = bc.db.NewBatch()
 		for _, block := range blockChain {
 			canonHashes[block.Hash()] = struct{}{}
@@ -1919,10 +2030,23 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 					skipPresenceCheck = true
 				}
 			}
+
+			// Separate out bor receipts (i.e. receipts of state-sync transactions)
+			var borReceiptRaw rlp.RawValue
+			receiptChain[i], borReceiptRaw = splitReceiptsAndDeriveFields(receiptChain[i], block.NumberU64(), block.Hash(), bc.chainConfig.Bor)
+
 			// Write all the data out into the database
 			rawdb.WriteCanonicalHash(batch, block.Hash(), block.NumberU64())
 			rawdb.WriteBlock(batch, block)
 			rawdb.WriteRawReceipts(batch, block.Hash(), block.NumberU64(), receiptChain[i])
+
+			var borReceipt types.ReceiptForStorage
+			if len(borReceiptRaw) > 0 {
+				if err := rlp.DecodeBytes(borReceiptRaw, &borReceipt); err == nil {
+					rawdb.WriteBorReceipt(batch, block.Hash(), block.NumberU64(), &borReceipt)
+					rawdb.WriteBorTxLookupEntry(batch, block.Hash(), block.NumberU64())
+				}
+			}
 
 			// Write everything belongs to the blocks into the database. So that
 			// we can ensure all components of body is completed(body, receipts)
@@ -2133,7 +2257,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 	// Flush limits are not considered for the first TriesInMemory blocks.
 	current := block.NumberU64()
-	if current <= state.TriesInMemory {
+	triesInMemory := bc.cfg.GetTriesInMemory()
+	if current <= triesInMemory {
 		return []*types.Log{}, nil
 	}
 	// If we exceeded our memory allowance, flush matured singleton nodes to disk
@@ -2146,7 +2271,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		_ = bc.triedb.Cap(limit - ethdb.IdealBatchSize)
 	}
 	// Find the next state trie we need to commit
-	chosen := current - state.TriesInMemory
+	chosen := current - triesInMemory
 	flushInterval := time.Duration(bc.flushInterval.Load())
 	// If we exceeded time allowance, flush an entire trie to disk
 	if bc.gcproc > flushInterval {
@@ -2158,8 +2283,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		} else {
 			// If we're exceeding limits but haven't reached a large enough memory gap,
 			// warn the user that the system is becoming unstable.
-			if chosen < bc.lastWrite+state.TriesInMemory && bc.gcproc >= 2*flushInterval {
-				log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", flushInterval, "optimum", float64(chosen-bc.lastWrite)/state.TriesInMemory)
+			if chosen < bc.lastWrite+triesInMemory && bc.gcproc >= 2*flushInterval {
+				log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", flushInterval, "optimum", float64(chosen-bc.lastWrite)/float64(triesInMemory))
 			}
 			// Flush an entire trie and restart the counters
 			_ = bc.triedb.Commit(header.Root, true)
@@ -2941,7 +3066,7 @@ func (bpr *blockProcessingResult) Witness() *stateless.Witness {
 // it writes the block and associated state to database.
 // nolint : unused
 func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, start time.Time, setHead bool, diskdb ethdb.Database) (_ *blockProcessingResult, blockEndErr error) {
-	var startTime = time.Now()
+	startTime := time.Now()
 	if bc.logger != nil && bc.logger.OnBlockStart != nil {
 		td := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 		bc.logger.OnBlockStart(tracing.BlockEvent{
@@ -3775,7 +3900,6 @@ func (bc *BlockChain) ProcessBlockWithWitnesses(block *types.Block, witness *sta
 	author := NewEVMBlockContext(block.Header(), bc.hc, nil).Coinbase
 
 	crossStateRoot, crossReceiptRoot, statedb, res, err := ExecuteStateless(bc.chainConfig, bc.cfg.VmConfig, task, witness, &author, bc.engine, bc.statedb.TrieDB().Disk())
-
 	// Currently, we don't return the error, because we don't have a way to handle Span update statelessly
 	// TODO: Return the error once we have a way to handle Span update
 	if err != nil {

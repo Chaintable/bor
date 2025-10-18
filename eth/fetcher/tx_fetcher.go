@@ -118,7 +118,6 @@ type txAnnounce struct {
 	metas  []*txMetadata // Batch of metadatas associated with the hashes (nil before eth/68)
 }
 
-
 // txMetadata provides the extra data transmitted along with the announcement
 // for better fetch scheduling.
 type txMetadata struct {

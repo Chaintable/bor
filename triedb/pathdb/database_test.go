@@ -617,7 +617,6 @@ func TestDatabaseRecoverable(t *testing.T) {
 	defer func() {
 		maxDiffLayers = 128
 	}()
-
 	var (
 		tester = newTester(t, &testerConfig{layers: 12})
 		index  = tester.bottomIndex()

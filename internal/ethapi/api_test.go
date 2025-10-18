@@ -4418,7 +4418,7 @@ func TestCreateAccessListWithStateOverrides(t *testing.T) {
 
 func TestBorWitnessAPI_Integration(t *testing.T) {
 	// TODO marcello fix and enable
-	t.Skip("Skipping Bor Witness API integration test")
+	t.Skip("bor: fix and enable")
 	t.Parallel()
 	genesis := &core.Genesis{
 		Config: params.TestChainConfig,

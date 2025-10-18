@@ -56,7 +56,7 @@ const (
 	checkpointInterval = 1024            // Number of blocks after which to save the vote snapshot to the database
 	inmemorySnapshots  = 128             // Number of recent vote snapshots to keep in memory
 	inmemorySignatures = 4096            // Number of recent block signatures to keep in memory
-	veblopBlockTimeout = time.Second * 4 // Timeout for new span check. DO NOT CHANGE THIS VALUE.
+	veblopBlockTimeout = time.Second * 6 // Timeout for new span check. DO NOT CHANGE THIS VALUE.
 )
 
 // Bor protocol constants.
@@ -988,7 +988,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header) e
 
 	header.Time = parent.Time + CalcProducerDelay(number, succession, c.config)
 	if header.Time < uint64(time.Now().Unix()) {
-		header.Time = uint64(time.Now().Unix())
+		header.Time = uint64(time.Now().Unix()) + CalcProducerDelay(number, succession, c.config)
 	} else {
 		// For primary validators, wait until the current block production window
 		// starts. This prevents bor from starting to build next block before time
@@ -1203,11 +1203,12 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, witnes
 	// Sweet, the protocol permits us to sign the block, wait for our time
 	if c.config.IsBhilai(header.Number) {
 		delay = time.Until(time.Unix(int64(header.Time), 0)) // Wait until we reach header time for non-primary validators
-		if successionNumber == 0 {
-			// For primary producers, set the delay to `header.Time - block time` instead of `header.Time`
-			// for early block announcement instead of waiting for full block time.
-			delay = time.Until(time.Unix(int64(header.Time-c.config.CalculatePeriod(number)), 0))
-		}
+		// Disable early block announcement
+		// if successionNumber == 0 {
+		// 	// For primary producers, set the delay to `header.Time - block time` instead of `header.Time`
+		// 	// for early block announcement instead of waiting for full block time.
+		// 	delay = time.Until(time.Unix(int64(header.Time-c.config.CalculatePeriod(number)), 0))
+		// }
 	} else {
 		delay = time.Until(time.Unix(int64(header.Time), 0)) // Wait until we reach header time
 	}

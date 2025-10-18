@@ -445,16 +445,16 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 
 // This test checks that transactions are only announced when txannouncementonly is enabled
 func TestSendTransactionAnnouncementsOnly69(t *testing.T) {
-	// TODO marcello fix and enable
-	// testSendTransactionAnnouncementsOnly(t, eth.ETH69)
+	testSendTransactionAnnouncementsOnly(t, eth.ETH69)
 }
 func TestSendTransactionAnnouncementsOnly68(t *testing.T) {
-	// TODO marcello fix and enable
-	// testSendTransactionAnnouncementsOnly(t, eth.ETH68)
+	testSendTransactionAnnouncementsOnly(t, eth.ETH68)
 }
 
 //nolint:unused
 func testSendTransactionAnnouncementsOnly(t *testing.T, protocol uint) {
+	// TODO marcello fix and enable
+	t.Skip("bor: fix and enable")
 	t.Parallel()
 
 	// Create a source handler that has txannouncementonly enabled
