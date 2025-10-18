@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/dchest/siphash"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
@@ -103,15 +104,14 @@ type txPool interface {
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	NodeID     enode.ID            // P2P node ID used for tx propagation topology
-	Database   ethdb.Database      // Database for direct sync insertions
-	Chain      *core.BlockChain    // Blockchain to serve data from
-	TxPool     txPool              // Transaction pool to propagate from
-	Network    uint64              // Network identifier to advertise
-	Sync       downloader.SyncMode // Whether to snap or full sync
-	BloomCache uint64              // Megabytes to alloc for snap sync bloom
-	EventMux   *event.TypeMux      // Legacy event mux, deprecate for `feed`
-	// TODO marcello is checker needed?
+	NodeID                  enode.ID            // P2P node ID used for tx propagation topology
+	Database                ethdb.Database      // Database for direct sync insertions
+	Chain                   *core.BlockChain    // Blockchain to serve data from
+	TxPool                  txPool              // Transaction pool to propagate from
+	Network                 uint64              // Network identifier to advertise
+	Sync                    downloader.SyncMode // Whether to snap or full sync
+	BloomCache              uint64              // Megabytes to alloc for snap sync bloom
+	EventMux                *event.TypeMux      // Legacy event mux, deprecate for `feed`
 	checker                 ethereum.ChainValidator
 	RequiredBlocks          map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
 	EthAPI                  *ethapi.BlockChainAPI  // EthAPI to interact
@@ -182,9 +182,8 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 
 	h := &handler{
-		nodeID:    config.NodeID,
-		networkID: config.Network,
-		// TODO marcello is forkFilter needed?
+		nodeID:                  config.NodeID,
+		networkID:               config.Network,
 		forkFilter:              forkid.NewFilter(config.Chain),
 		eventMux:                config.EventMux,
 		database:                config.Database,

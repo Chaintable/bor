@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert" // import path where ethPeer lives
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -15,8 +18,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert" // import path where ethPeer lives
 )
 
 func TestRequestWitnesses_NoWitPeer(t *testing.T) {

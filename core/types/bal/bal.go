@@ -20,8 +20,9 @@ import (
 	"bytes"
 	"maps"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // CodeChange contains the runtime bytecode deployed at an address and the

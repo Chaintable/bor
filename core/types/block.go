@@ -28,12 +28,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-verkle"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-verkle"
 )
 
 var (

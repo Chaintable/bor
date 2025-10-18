@@ -22,8 +22,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/golang/snappy"
+
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (

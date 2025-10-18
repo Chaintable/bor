@@ -29,10 +29,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/golang/snappy"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/golang/snappy"
 )
 
 var (

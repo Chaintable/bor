@@ -38,8 +38,9 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 
-	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/prometheus/tsdb/fileutil"
+
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 const (

@@ -29,6 +29,9 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/naoina/toml"
+	"github.com/urfave/cli/v2"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -48,8 +51,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/naoina/toml"
-	"github.com/urfave/cli/v2"
 )
 
 var (
@@ -229,17 +230,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Int64(utils.OverrideOsaka.Name)
 		cfg.Eth.OverrideOsaka = new(big.Int).SetInt64(v)
 	}
-	// TODO marcello discarded from geth
-	/*
-		if ctx.IsSet(utils.OverrideBPO1.Name) {
-			v := ctx.Uint64(utils.OverrideBPO1.Name)
-			cfg.Eth.OverrideBPO1 = &v
-		}
-		if ctx.IsSet(utils.OverrideBPO2.Name) {
-			v := ctx.Uint64(utils.OverrideBPO2.Name)
-			cfg.Eth.OverrideBPO2 = &v
-		}
-	*/
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Int64(utils.OverrideVerkle.Name)
 		cfg.Eth.OverrideVerkle = new(big.Int).SetInt64(v)

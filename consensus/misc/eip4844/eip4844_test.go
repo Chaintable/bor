@@ -183,7 +183,6 @@ func TestFakeExponential(t *testing.T) {
 }
 
 func TestCalcExcessBlobGasEIP7918(t *testing.T) {
-	// TODO marcello: discarded from geth
 	t.Skip("bor: not relevant")
 	var (
 		cfg           = params.MergedTestChainConfig

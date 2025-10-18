@@ -26,6 +26,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/holiman/uint256"
+	"golang.org/x/exp/maps"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -35,8 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
-	"github.com/holiman/uint256"
-	"golang.org/x/exp/maps"
 )
 
 func updateTrie(db *Database, stateRoot common.Hash, addrHash common.Hash, root common.Hash, entries map[common.Hash][]byte) (common.Hash, *trienode.NodeSet) {

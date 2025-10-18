@@ -451,7 +451,6 @@ func TestSendTransactionAnnouncementsOnly68(t *testing.T) {
 	testSendTransactionAnnouncementsOnly(t, eth.ETH68)
 }
 
-//nolint:unused
 func testSendTransactionAnnouncementsOnly(t *testing.T, protocol uint) {
 	// TODO marcello fix and enable
 	t.Skip("bor: fix and enable")

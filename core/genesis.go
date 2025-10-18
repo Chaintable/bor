@@ -25,6 +25,8 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -40,7 +42,6 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
-	"github.com/holiman/uint256"
 )
 
 //go:generate go run github.com/fjl/gencodec -type Genesis -field-override genesisSpecMarshaling -out gen_genesis.go
@@ -288,15 +289,6 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	if o.OverrideOsaka != nil {
 		cfg.OsakaBlock = o.OverrideOsaka
 	}
-	// TODO marcello discarded from geth
-	/*
-		if o.OverrideBPO1 != nil {
-			cfg.BPO1Block = o.OverrideBPO1
-		}
-		if o.OverrideBPO2 != nil {
-			cfg.BPO2Block = o.OverrideBPO2
-		}
-	*/
 	if o.OverrideVerkle != nil {
 		cfg.VerkleBlock = o.OverrideVerkle
 	}

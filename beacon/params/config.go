@@ -27,11 +27,12 @@ import (
 	"strconv"
 	"strings"
 
+	yaml "gopkg.in/yaml.v3"
+
 	"github.com/ethereum/go-ethereum/beacon/merkle"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // syncCommitteeDomain specifies the signatures specific use to avoid clashes

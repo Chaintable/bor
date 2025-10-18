@@ -21,12 +21,13 @@ import (
 	"runtime"
 	"sync/atomic"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
-	"golang.org/x/sync/errgroup"
 )
 
 // statePrefetcher is a basic Prefetcher that executes transactions from a block

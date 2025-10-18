@@ -24,12 +24,13 @@ import (
 	"slices"
 	"sync"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/triedb/database"
-	"golang.org/x/sync/errgroup"
 )
 
 // Trie represents a Merkle Patricia Trie. Use New to create a trie that operates

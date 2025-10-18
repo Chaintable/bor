@@ -17,7 +17,7 @@
 // Package core implements the Ethereum consensus protocol.
 package core
 
-// TODO marcello check this file very well
+// TODO marcello double check this file
 
 import (
 	"bytes"
@@ -137,7 +137,6 @@ const (
 	blockCacheLimit    = 256
 	receiptsCacheLimit = 1024
 	txLookupCacheLimit = 1024
-	// TODO marcello maxFutureBlocks, maxTimeFutureBlocks and future* discarded from geth
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//

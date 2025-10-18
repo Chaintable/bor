@@ -16,7 +16,7 @@
 
 package miner
 
-// TODO marcello check this file very well
+// TODO marcello double check this file
 
 import (
 	"context"

@@ -31,6 +31,8 @@ import (
 	heimdallApp "github.com/0xPolygon/heimdall-v2/app"
 	heimdalld "github.com/0xPolygon/heimdall-v2/cmd/heimdalld/cmd"
 	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
+	"go.uber.org/automaxprocs/maxprocs"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
@@ -41,7 +43,6 @@ import (
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
-	"go.uber.org/automaxprocs/maxprocs"
 
 	// Force-load the tracer engines to trigger registration
 	_ "github.com/ethereum/go-ethereum/eth/tracers/js"

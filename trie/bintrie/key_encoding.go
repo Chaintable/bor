@@ -20,8 +20,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (

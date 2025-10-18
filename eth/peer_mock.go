@@ -7,11 +7,12 @@ package eth
 import (
 	reflect "reflect"
 
+	gomock "github.com/golang/mock/gomock"
+
 	common "github.com/ethereum/go-ethereum/common"
 	stateless "github.com/ethereum/go-ethereum/core/stateless"
 	wit "github.com/ethereum/go-ethereum/eth/protocols/wit"
 	log "github.com/ethereum/go-ethereum/log"
-	gomock "github.com/golang/mock/gomock"
 )
 
 // MockWitnessPeer is a mock of WitnessPeer interface.

@@ -26,9 +26,10 @@ import (
 	"testing"
 	"time"
 
+	"gotest.tools/assert"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/params"
-	"gotest.tools/assert"
 )
 
 // precompiledTest defines the input/output pairs for precompiled contract tests.

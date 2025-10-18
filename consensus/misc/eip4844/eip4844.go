@@ -65,19 +65,6 @@ func latestBlobConfig(cfg *params.ChainConfig, _ uint64) *BlobConfig {
 		bc     *params.BlobConfig
 	)
 	switch {
-	// TODO marcello discarded from geth
-	/*
-		case cfg.IsBPO5(london) && s.BPO5 != nil:
-			bc = s.BPO5
-		case cfg.IsBPO4(london) && s.BPO4 != nil:
-			bc = s.BPO4
-		case cfg.IsBPO3(london) && s.BPO3 != nil:
-			bc = s.BPO3
-		case cfg.IsBPO2(london) && s.BPO2 != nil:
-			bc = s.BPO2
-		case cfg.IsBPO1(london) && s.BPO1 != nil:
-			bc = s.BPO1
-	*/
 	case cfg.IsOsaka(london) && s.Osaka != nil:
 		bc = s.Osaka
 	case cfg.IsPrague(london) && s.Prague != nil:
@@ -153,21 +140,6 @@ func calcExcessBlobGas(isOsaka bool, bcfg *BlobConfig, parent *types.Header) uin
 	if excessBlobGas < targetGas {
 		return 0
 	}
-
-	// TODO marcello discarded from geth
-	// EIP-7918 (post-Osaka) introduces a different formula for computing excess,
-	// in cases where the price is lower than a 'reserve price'.
-	//if isOsaka {
-	//	var (
-	//		baseCost     = big.NewInt(params.BlobBaseCost)
-	//		reservePrice = baseCost.Mul(baseCost, parent.BaseFee)
-	//		blobPrice    = bcfg.blobPrice(parentExcessBlobGas)
-	//	)
-	//	if reservePrice.Cmp(blobPrice) > 0 {
-	//		scaledExcess := parentBlobGasUsed * uint64(bcfg.Max-bcfg.Target) / uint64(bcfg.Max)
-	//		return parentExcessBlobGas + scaledExcess
-	//	}
-	//}
 
 	// Original EIP-4844 formula.
 	return excessBlobGas - targetGas

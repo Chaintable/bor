@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
+
 	"github.com/ethereum/go-ethereum/common/bitutil"
 )
 

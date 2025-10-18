@@ -12,8 +12,9 @@ package filters
 import (
 	reflect "reflect"
 
-	ethdb "github.com/ethereum/go-ethereum/ethdb"
 	gomock "go.uber.org/mock/gomock"
+
+	ethdb "github.com/ethereum/go-ethereum/ethdb"
 )
 
 // MockDatabase is a mock of Database interface.
