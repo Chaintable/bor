@@ -135,8 +135,7 @@ const (
 	blockCacheLimit     = 256
 	receiptsCacheLimit  = 1024
 	txLookupCacheLimit  = 1024
-	maxFutureBlocks     = 256
-	maxTimeFutureBlocks = 30
+	// TODO marcello maxFutureBlocks, maxTimeFutureBlocks and future* not needed right?
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -176,21 +175,27 @@ const (
 // BlockChainConfig contains the configuration of the BlockChain object.
 type BlockChainConfig struct {
 	// Trie database related options
-	TrieCleanLimit   int           // Memory allowance (MB) to use for caching trie nodes in memory
-	TrieDirtyLimit   int           // Memory limit (MB) at which to start flushing dirty trie nodes to disk
-	TrieTimeLimit    time.Duration // Time limit after which to flush the current in-memory trie to disk
-	TrieNoAsyncFlush bool          // Whether the asynchronous buffer flushing is disallowed
+	TrieCleanLimit       int           // Memory allowance (MB) to use for caching trie nodes in memory
+	TrieDirtyLimit       int           // Memory limit (MB) at which to start flushing dirty trie nodes to disk
+	TrieTimeLimit        time.Duration // Time limit after which to flush the current in-memory trie to disk
+	TrieNoAsyncFlush     bool          // Whether the asynchronous buffer flushing is disallowed
+	TrieJournalDirectory string        // Directory path to the journal used for persisting trie data across node restarts
 
-	Preimages    bool   // Whether to store preimage of trie key to the disk
-	StateHistory uint64 // Number of blocks from head whose state histories are reserved.
-	StateScheme  string // Scheme used to store ethereum states and merkle tree nodes on top
-	ArchiveMode  bool   // Whether to enable the archive mode
+	Preimages   bool   // Whether to store preimage of trie key to the disk
+	StateScheme string // Scheme used to store ethereum states and merkle tree nodes on top
+	ArchiveMode bool   // Whether to enable the archive mode
+
+	// Number of blocks from the chain head for which state histories are retained.
+	// If set to 0, all state histories across the entire chain will be retained;
+	StateHistory uint64
 
 	// State snapshot related options
 	SnapshotLimit   int  // Memory allowance (MB) to use for caching snapshot entries in memory
 	SnapshotNoBuild bool // Whether the background generation is allowed
 	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 
+	// This defines the cutoff block for history expiry.
+	// Blocks before this number may be unavailable in the chain database.
 	ChainHistoryMode history.HistoryMode
 
 	// Misc options
@@ -204,6 +209,9 @@ type BlockChainConfig struct {
 	// If the value is zero, all transactions of the entire chain will be indexed.
 	// If the value is -1, indexing is disabled.
 	TxLookupLimit int64
+
+	// StateSizeTracking indicates whether the state size tracking is enabled.
+	StateSizeTracking bool
 
 	ShouldPreserve func(header *types.Header) bool
 	Checker        ethereum.ChainValidator
@@ -267,6 +275,7 @@ func (cfg *BlockChainConfig) triedbConfig(isVerkle bool) *triedb.Config {
 			EnableStateIndexing: cfg.ArchiveMode,
 			TrieCleanSize:       cfg.TrieCleanLimit * 1024 * 1024,
 			StateCleanSize:      cfg.SnapshotLimit * 1024 * 1024,
+			JournalDirectory:    cfg.TrieJournalDirectory,
 
 			// TODO(rjl493456442): The write buffer represents the memory limit used
 			// for flushing both trie data and state data to disk. The config name
@@ -341,23 +350,19 @@ type BlockChain struct {
 	txLookupLock  sync.RWMutex
 	txLookupCache *lru.Cache[common.Hash, txLookup]
 
-	// future blocks are blocks added for later processing
-	futureBlocks *lru.Cache[common.Hash, *types.Block]
+	stopping      atomic.Bool // false if chain is running, true when stopped
+	procInterrupt atomic.Bool // interrupt signaler for block processing
 
-	wg            sync.WaitGroup
-	quit          chan struct{} // shutdown signal, closed in Stop.
-	stopping      atomic.Bool   // false if chain is running, true when stopped
-	procInterrupt atomic.Bool   // interrupt signaler for block processing
-
-	engine                       consensus.Engine
-	validator                    Validator // Block and state validator interface
-	prefetcher                   Prefetcher
-	processor                    Processor // Block transaction processor interface
+	engine     consensus.Engine
+	validator  Validator // Block and state validator interface
+	prefetcher Prefetcher
+	processor  Processor // Block transaction processor interface
 	parallelProcessor            Processor // Parallel block transaction processor interface
 	parallelSpeculativeProcesses int       // Number of parallel speculative processes
 	enforceParallelProcessor     bool
 	forker                       *ForkChoice
-	logger                       *tracing.Hooks
+	logger     *tracing.Hooks
+	stateSizer *state.SizeTracker // State size tracking
 
 	// Bor related changes
 	borReceiptsCache    *lru.Cache[common.Hash, *types.Receipt] // Cache for the most recent bor receipt receipts per block
@@ -405,23 +410,21 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	log.Info("")
 
 	bc := &BlockChain{
-		chainConfig:         chainConfig,
-		cfg:                 cfg,
-		db:                  db,
-		triedb:              triedb,
-		triegc:              prque.New[int64, common.Hash](nil),
-		quit:                make(chan struct{}),
-		chainmu:             syncx.NewClosableMutex(),
-		bodyCache:           lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
-		bodyRLPCache:        lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
-		receiptsCache:       lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
-		blockCache:          lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
-		txLookupCache:       lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
-		futureBlocks:        lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
-		engine:              engine,
+		chainConfig:   chainConfig,
+		cfg:           cfg,
+		db:            db,
+		triedb:        triedb,
+		triegc:        prque.New[int64, common.Hash](nil),
+		chainmu:       syncx.NewClosableMutex(),
+		bodyCache:     lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
+		bodyRLPCache:  lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
+		receiptsCache: lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
+		blockCache:    lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
+		txLookupCache: lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
+		engine:        engine,
 		borReceiptsCache:    lru.NewCache[common.Hash, *types.Receipt](receiptsCacheLimit),
 		borReceiptsRLPCache: lru.NewCache[common.Hash, rlp.RawValue](receiptsCacheLimit),
-		logger:              cfg.VmConfig.Tracer,
+		logger:        cfg.VmConfig.Tracer,
 		checker:             cfg.Checker,
 	}
 
@@ -605,6 +608,17 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	// Start header verification loop
 	bc.startHeaderVerificationLoop()
 
+
+	// Start state size tracker
+	if bc.cfg.StateSizeTracking {
+		stateSizer, err := state.NewSizeTracker(bc.db, bc.triedb)
+		if err == nil {
+			bc.stateSizer = stateSizer
+			log.Info("Enabled state size metrics")
+		} else {
+			log.Info("Failed to setup size tracker", "err", err)
+		}
+	}
 	return bc, nil
 }
 
@@ -947,7 +961,7 @@ func (bc *BlockChain) initializeHistoryPruning(latest uint64) error {
 		predefinedPoint := history.PrunePoints[bc.genesisBlock.Hash()]
 		if predefinedPoint == nil || freezerTail != predefinedPoint.BlockNumber {
 			log.Error("Chain history database is pruned with unknown configuration", "tail", freezerTail)
-			return fmt.Errorf("unexpected database tail")
+			return errors.New("unexpected database tail")
 		}
 		bc.historyPrunePoint.Store(predefinedPoint)
 		return nil
@@ -961,15 +975,15 @@ func (bc *BlockChain) initializeHistoryPruning(latest uint64) error {
 			// action to happen. So just tell them how to do it.
 			log.Error(fmt.Sprintf("Chain history mode is configured as %q, but database is not pruned.", bc.cfg.ChainHistoryMode.String()))
 			log.Error(fmt.Sprintf("Run 'geth prune-history' to prune pre-merge history."))
-			return fmt.Errorf("history pruning requested via configuration")
+			return errors.New("history pruning requested via configuration")
 		}
 		predefinedPoint := history.PrunePoints[bc.genesisBlock.Hash()]
 		if predefinedPoint == nil {
 			log.Error("Chain history pruning is not supported for this network", "genesis", bc.genesisBlock.Hash())
-			return fmt.Errorf("history pruning requested for unknown network")
+			return errors.New("history pruning requested for unknown network")
 		} else if freezerTail > 0 && freezerTail != predefinedPoint.BlockNumber {
 			log.Error("Chain history database is pruned to unknown block", "tail", freezerTail)
-			return fmt.Errorf("unexpected database tail")
+			return errors.New("unexpected database tail")
 		}
 		bc.historyPrunePoint.Store(predefinedPoint)
 		return nil
@@ -1545,11 +1559,13 @@ func (bc *BlockChain) stopWithoutSaving() {
 	// Unsubscribe all subscriptions registered from blockchain.
 	bc.scope.Close()
 
-	close(bc.quit)
-
 	// Signal shutdown to all goroutines.
 	bc.InterruptInsert(true)
 
+	// Stop state size tracker
+	if bc.stateSizer != nil {
+		bc.stateSizer.Stop()
+	}
 	// Now wait for all chain modifications to end and persistent goroutines to exit.
 	//
 	// Note: Close waits for the mutex to become available, i.e. any running chain
@@ -2085,18 +2101,17 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		log.Crit("Failed to write block into disk", "err", err)
 	}
 	// Commit all cached state changes into underlying memory database.
-
-	var root common.Hash
-	var err error
-	if statedb.Database() != nil {
-		root, err = statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number()))
-		if err != nil {
-			return []*types.Log{}, err
-		}
+	root, stateUpdate, err := statedb.CommitWithUpdate(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number()))
+	if err != nil {
+		return []*types.Log{}, err
 	}
 
 	rawdb.WriteBytecodeSyncLastBlock(bc.db, block.NumberU64())
 
+	// Emit the state update to the state sizestats if it's active
+	if bc.stateSizer != nil {
+		bc.stateSizer.Notify(stateUpdate)
+	}
 	// If node is running in path mode, skip explicit gc operation
 	// which is unnecessary in this mode.
 	if bc.triedb.Scheme() == rawdb.PathScheme {
@@ -2967,7 +2982,11 @@ type blockProcessingResult struct {
 	witness  *stateless.Witness
 }
 
-// processBlock executes and validates the given block. If there was no error
+func (bpr *blockProcessingResult) Witness() *stateless.Witness {
+	return bpr.witness
+}
+
+// ProcessBlock executes and validates the given block. If there was no error
 // it writes the block and associated state to database.
 // nolint : unused
 func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, start time.Time, setHead bool, diskdb ethdb.Database) (_ *blockProcessingResult, blockEndErr error) {
@@ -3034,6 +3053,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 			return nil, fmt.Errorf("stateless self-validation receipt root mismatch (cross: %x local: %x)", crossReceiptRoot, block.ReceiptHash())
 		}
 	}
+
 	xvtime := time.Since(xvstart)
 	proctime := time.Since(startTime) // processing + validation + cross validation
 
@@ -3069,6 +3089,11 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	if err != nil {
 		return nil, err
 	}
+	// Report the collected witness statistics
+	if witnessStats != nil {
+		witnessStats.ReportMetrics(block.NumberU64())
+	}
+
 	// Update the metrics touched during block commit
 	accountCommitTimer.Update(statedb.AccountCommits)   // Account commits are complete, we can mark them
 	storageCommitTimer.Update(statedb.StorageCommits)   // Storage commits are complete, we can mark them
@@ -3659,13 +3684,11 @@ func (bc *BlockChain) reportBlock(block *types.Block, res *ProcessResult, err er
 // logForkReadiness will write a log when a future fork is scheduled, but not
 // active. This is useful so operators know their client is ready for the fork.
 func (bc *BlockChain) logForkReadiness(block *types.Block) {
-	config := bc.Config()
-	current, last := config.LatestFork(block.Time()), config.LatestFork(math.MaxUint64)
+	current := bc.Config().LatestFork(block.Time())
 
-	// Short circuit if the timestamp of the last fork is undefined,
-	// or if the network has already passed the last configured fork.
-	t := config.Timestamp(last)
-	if t == nil || current >= last {
+	// Short circuit if the timestamp of the last fork is undefined.
+	t := bc.Config().Timestamp(current + 1)
+	if t == nil {
 		return
 	}
 	at := time.Unix(int64(*t), 0)
@@ -3675,7 +3698,7 @@ func (bc *BlockChain) logForkReadiness(block *types.Block) {
 	// - Enough time has passed since last alert
 	now := time.Now()
 	if now.Before(at) && now.After(bc.lastForkReadyAlert.Add(forkReadyInterval)) {
-		log.Info("Ready for fork activation", "fork", last, "date", at.Format(time.RFC822),
+		log.Info("Ready for fork activation", "fork", current+1, "date", at.Format(time.RFC822),
 			"remaining", time.Until(at).Round(time.Second), "timestamp", at.Unix())
 		bc.lastForkReadyAlert = time.Now()
 	}
@@ -3910,4 +3933,9 @@ func (bc *BlockChain) verifyPendingHeaders() {
 			lastValidNumber = header.Number.Uint64()
 		}
 	}
+}
+
+// StateSizer returns the state size tracker, or nil if it's not initialized
+func (bc *BlockChain) StateSizer() *state.SizeTracker {
+	return bc.stateSizer
 }

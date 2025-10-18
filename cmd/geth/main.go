@@ -71,6 +71,8 @@ var (
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.OverrideOsaka,
+		utils.OverrideBPO1,
+		utils.OverrideBPO2,
 		utils.OverrideVerkle,
 		utils.EnablePersonal, // deprecated
 		utils.TxPoolLocalsFlag,
@@ -143,6 +145,8 @@ var (
 		utils.VMEnableDebugFlag,
 		utils.VMTraceFlag,
 		utils.VMTraceJsonConfigFlag,
+		utils.VMWitnessStatsFlag,
+		utils.VMStatelessSelfValidationFlag,
 		utils.NetworkIdFlag,
 		utils.EthStatsURLFlag,
 		utils.GpoBlocksFlag,
@@ -190,6 +194,7 @@ var (
 		utils.RPCGlobalGasCapFlag,
 		utils.RPCGlobalEVMTimeoutFlag,
 		utils.RPCGlobalTxFeeCapFlag,
+		utils.RPCGlobalLogQueryLimit,
 		utils.AllowUnprotectedTxs,
 		utils.BatchRequestLimit,
 		utils.BatchResponseMaxSize,
@@ -210,6 +215,7 @@ var (
 		utils.MetricsInfluxDBTokenFlag,
 		utils.MetricsInfluxDBBucketFlag,
 		utils.MetricsInfluxDBOrganizationFlag,
+		utils.StateSizeTrackingFlag,
 	}
 )
 

@@ -265,7 +265,7 @@ func TestFreezerConcurrentModifyTruncate(t *testing.T) {
 		// fails, otherwise it succeeds. In either case, the freezer should be positioned
 		// at 10 after both operations are done.
 		if truncateErr != nil {
-			t.Fatal("concurrent truncate failed:", err)
+			t.Fatal("concurrent truncate failed:", truncateErr)
 		}
 
 		if !(errors.Is(modifyErr, nil) || errors.Is(modifyErr, errOutOrderInsertion)) {

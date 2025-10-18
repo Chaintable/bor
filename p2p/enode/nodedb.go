@@ -475,7 +475,7 @@ func (db *DB) localSeq(id ID) uint64 {
 		return seq
 	}
 
-	return nowMilliseconds()
+	return uint64(time.Now().UnixMilli())
 }
 
 // storeLocalSeq stores the local record sequence counter.

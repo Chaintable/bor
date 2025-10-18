@@ -124,7 +124,8 @@ var (
 	slotsGauge   = metrics.NewRegisteredGauge("txpool/slots", nil)
 
 	resetCacheGauge = metrics.NewRegisteredGauge("txpool/resetcache", nil)
-	reheapTimer     = metrics.NewRegisteredTimer("txpool/reheap", nil)
+	reheapTimer = metrics.NewRegisteredTimer("txpool/reheap", nil)
+
 	// pendingLockWaitTimer measures how long it took to acquire the pending lock. This is useful
 	// to understand delay in block building and the impact of lock acquisition.
 	pendingLockWaitTimer = metrics.NewRegisteredTimer("txpool/pendinglockwait", nil)
@@ -164,7 +165,7 @@ type Config struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-	Lifetime            time.Duration // Maximum amount of time non-executable transaction are queued
+	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
 	AllowUnprotectedTxs bool          // Allow non-EIP-155 transactions
 
 	// Transaction filtering configuration
@@ -184,7 +185,7 @@ var DefaultConfig = Config{
 	AccountQueue: 64,
 	GlobalQueue:  1024,
 
-	Lifetime:            3 * time.Hour,
+	Lifetime: 3 * time.Hour,
 	AllowUnprotectedTxs: false,
 }
 
@@ -552,7 +553,7 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter, interrupt *atomic.B
 
 	// If only blob transactions are requested, this pool is unsuitable as it
 	// contains none, don't even bother.
-	if filter.OnlyBlobTxs {
+	if filter.BlobTxs {
 		return nil
 	}
 
@@ -566,17 +567,6 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter, interrupt *atomic.B
 		interrupt = new(atomic.Bool)
 	}
 
-	// Convert the new uint256.Int types to the old big.Int ones used by the legacy pool
-	var (
-		minTipBig  *big.Int
-		baseFeeBig *big.Int
-	)
-	if filter.MinTip != nil {
-		minTipBig = filter.MinTip.ToBig()
-	}
-	if filter.BaseFee != nil {
-		baseFeeBig = filter.BaseFee.ToBig()
-	}
 	pending := make(map[common.Address][]*txpool.LazyTransaction, len(pool.pending))
 	for addr, list := range pool.pending {
 		// Check for the flag to interrupt block building on timeout.
@@ -589,11 +579,19 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter, interrupt *atomic.B
 		txs := list.Flatten()
 
 		// If the miner requests tip enforcement, cap the lists now
-		if minTipBig != nil {
+		if filter.MinTip != nil || filter.GasLimitCap != 0 {
 			for i, tx := range txs {
-				if tx.EffectiveGasTipIntCmp(minTipBig, baseFeeBig) < 0 {
-					txs = txs[:i]
-					break
+				if filter.MinTip != nil {
+					if tx.EffectiveGasTipIntCmp(filter.MinTip, filter.BaseFee) < 0 {
+						txs = txs[:i]
+						break
+					}
+				}
+				if filter.GasLimitCap != 0 {
+					if tx.Gas() > filter.GasLimitCap {
+						txs = txs[:i]
+						break
+					}
 				}
 			}
 		}
@@ -623,7 +621,7 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter, interrupt *atomic.B
 // and does not require the pool mutex to be held.
 func (pool *LegacyPool) ValidateTxBasics(tx *types.Transaction) error {
 	opts := &txpool.ValidationOptions{
-		Config:              pool.chainconfig,
+		Config: pool.chainconfig,
 		AllowUnprotectedTxs: pool.config.AllowUnprotectedTxs,
 		Accept: 0 |
 			1<<types.LegacyTxType |
@@ -1377,6 +1375,21 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 	lockTime := time.Now()
 	pool.mu.Lock()
 	if reset != nil {
+		if reset.newHead != nil && reset.oldHead != nil {
+			// Discard the transactions with the gas limit higher than the cap.
+			if pool.chainconfig.IsOsaka(reset.newHead.Number, reset.newHead.Time) && !pool.chainconfig.IsOsaka(reset.oldHead.Number, reset.oldHead.Time) {
+				var hashes []common.Hash
+				pool.all.Range(func(hash common.Hash, tx *types.Transaction) bool {
+					if tx.Gas() > params.MaxTxGas {
+						hashes = append(hashes, hash)
+					}
+					return true
+				})
+				for _, hash := range hashes {
+					pool.removeTx(hash, true, true)
+				}
+			}
+		}
 		// Reset from the old head to the new, rescheduling any reorged transactions
 		pool.reset(reset.oldHead, reset.newHead)
 
@@ -1749,7 +1762,7 @@ func (pool *LegacyPool) demoteUnexecutables() {
 	nonces := make(map[common.Address]uint64, len(pool.pending))
 
 	// Iterate over all accounts and demote any non-executable transactions
-	currentHeader := pool.currentHead.Load()
+	gasLimit := pool.currentHead.Load().GasLimit
 	for addr, list := range pool.pending {
 		nonce := pool.currentState.GetNonce(addr)
 
@@ -1761,7 +1774,7 @@ func (pool *LegacyPool) demoteUnexecutables() {
 			log.Trace("Removed old pending transaction", "hash", hash)
 		}
 		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later
-		drops, invalids := list.Filter(pool.currentState.GetBalance(addr), currentHeader.GasLimit)
+		drops, invalids := list.Filter(pool.currentState.GetBalance(addr), gasLimit)
 		for _, tx := range drops {
 			hash := tx.Hash()
 			pool.all.Remove(hash)

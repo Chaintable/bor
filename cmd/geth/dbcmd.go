@@ -556,7 +556,7 @@ func dbDumpTrie(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true, true)
 	defer db.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, db, false, true, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, db, false, true, false)
 	defer triedb.Close()
 
 	var (
@@ -929,7 +929,7 @@ func inspectHistory(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true, true)
 	defer db.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, db, false, false, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, db, false, false, false)
 	defer triedb.Close()
 
 	var (

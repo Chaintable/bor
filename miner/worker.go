@@ -16,6 +16,8 @@
 
 package miner
 
+// TODO marcello check this file very well
+
 import (
 	"context"
 	"errors"
@@ -102,6 +104,7 @@ type environment struct {
 	signer   types.Signer
 	state    *state.StateDB // apply state changes here
 	tcount   int            // tx count in cycle
+	size     uint64         // size of the block we are building
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
 	evm      *vm.EVM
@@ -117,49 +120,9 @@ type environment struct {
 	witness             *stateless.Witness
 }
 
-// copy creates a deep copy of environment.
-func (env *environment) copy() *environment {
-	cpy := &environment{
-		signer:              env.signer,
-		state:               env.state.Copy(),
-		tcount:              env.tcount,
-		coinbase:            env.coinbase,
-		header:              types.CopyHeader(env.header),
-		receipts:            copyReceipts(env.receipts),
-		depsMVFullWriteList: env.depsMVFullWriteList,
-		mvReadMapList:       env.mvReadMapList,
-	}
-
-	if env.gasPool != nil {
-		gasPool := *env.gasPool
-		cpy.gasPool = &gasPool
-	}
-	cpy.txs = make([]*types.Transaction, len(env.txs))
-	copy(cpy.txs, env.txs)
-
-	cpy.sidecars = make([]*types.BlobTxSidecar, len(env.sidecars))
-	copy(cpy.sidecars, env.sidecars)
-
-	return cpy
-}
-
-// discard terminates the background prefetcher go-routine. It should
-// always be called for all created environment instances otherwise
-// the go-routine leak can happen.
-func (env *environment) discard() {
-	if env.state == nil {
-		return
-	}
-
-	env.state.StopPrefetcher()
-}
-
-// task contains all information for consensus engine sealing and result submitting.
-type task struct {
-	receipts  []*types.Receipt
-	state     *state.StateDB
-	block     *types.Block
-	createdAt time.Time
+// txFits reports whether the transaction fits into the block size limit.
+func (env *environment) txFitsSize(tx *types.Transaction) bool {
+	return env.size+tx.Size() < params.MaxBlockSize-maxBlockSizeBufferZone
 }
 
 const (
@@ -169,12 +132,10 @@ const (
 	commitInterruptTimeout
 )
 
-// newWorkReq represents a request for new sealing work submitting with relative interrupt notifier.
-type newWorkReq struct {
-	interrupt *atomic.Int32
-	noempty   bool
-	timestamp int64
-}
+// Block size is capped by the protocol at params.MaxBlockSize. When producing blocks, we
+// try to say below the size including a buffer zone, this is to avoid going over the
+// maximum size with auxiliary data added into the block.
+const maxBlockSizeBufferZone = 1_000_000
 
 // newPayloadResult is the result of payload generation.
 type newPayloadResult struct {
@@ -702,6 +663,7 @@ func (w *worker) mainLoop() {
 					w.commitWork(nil, true, time.Now().Unix())
 				}
 			}
+	body := types.Body{Transactions: work.txs, Withdrawals: genParam.withdrawals}
 
 			w.newTxs.Add(int32(len(ev.Txs)))
 
@@ -899,16 +861,17 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		if err != nil {
 			return nil, err
 		}
-		state.StartPrefetcher("miner", bundle)
+		state.StartPrefetcher("miner", bundle, nil)
 	} else {
 		// todo: @anshalshukla - check if witness is required
-		state.StartPrefetcher("miner", nil)
+		state.StartPrefetcher("miner", nil, nil)
 	}
 
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
 		signer:   types.MakeSigner(w.chainConfig, header.Number, header.Time),
 		state:    state,
+		size:     uint64(header.Size()),
 		coinbase: coinbase,
 		header:   header,
 		witness:  state.Witness(),
@@ -1098,7 +1061,11 @@ mainloop:
 				}
 			}
 		}
-
+		// if inclusion of the transaction would put the block size over the
+		// maximum we allow, don't add any more txs to the payload.
+		if !env.txFitsSize(tx) {
+			break
+		}
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance in the transaction pool.
 		from, _ := types.Sender(env.signer, tx)
@@ -1738,7 +1705,6 @@ func totalFees(block *types.Block, receipts []*types.Receipt) *big.Int {
 	for i, tx := range block.Transactions() {
 		minerFee, _ := tx.EffectiveGasTip(block.BaseFee())
 		feesWei.Add(feesWei, new(big.Int).Mul(new(big.Int).SetUint64(receipts[i].GasUsed), minerFee))
-		// TODO (MariusVanDerWijden) add blob fees
 	}
 
 	return feesWei

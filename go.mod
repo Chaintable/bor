@@ -138,6 +138,8 @@ require (
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
 	github.com/dlclark/regexp2 v1.7.0 // indirect
+	github.com/emicklei/dot v1.6.2 // indirect
+	github.com/fjl/gencodec v0.1.0 // indirect
 	github.com/garslo/gogen v0.0.0-20170306192744-1d203ffc1f61 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -360,4 +362,10 @@ replace (
 	github.com/ethereum/go-ethereum => github.com/0xPolygon/bor/v2 v2.2.11
 	github.com/ethereum/go-ethereum/common/math => github.com/0xPolygon/bor/common/math v1.5.5
 	go.mongodb.org/mongo-driver => go.mongodb.org/mongo-driver v1.14.0
+)
+
+tool (
+	github.com/fjl/gencodec
+	golang.org/x/tools/cmd/stringer
+	google.golang.org/protobuf/cmd/protoc-gen-go
 )

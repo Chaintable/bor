@@ -39,6 +39,10 @@ func (*dummyStatedb) SetState(_ common.Address, _ common.Hash, _ common.Hash) co
 	return common.Hash{}
 }
 
+func (*dummyStatedb) GetStateAndCommittedState(_ common.Address, _ common.Hash) (common.Hash, common.Hash) {
+	return common.Hash{}, common.Hash{}
+}
+
 func TestStoreCapture(t *testing.T) {
 	var (
 		logger   = NewStructLogger(nil)
@@ -50,7 +54,7 @@ func TestStoreCapture(t *testing.T) {
 
 	var index common.Hash
 	logger.OnTxStart(evm.GetVMContext(), nil, common.Address{})
-	_, err := evm.Interpreter().Run(contract, []byte{}, false, nil)
+	_, err := evm.Run(contract, []byte{}, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -127,8 +127,8 @@ type Ethereum struct {
 
 	APIBackend *EthAPIBackend
 
-	miner     *miner.Miner
-	gasPrice  *big.Int
+	miner    *miner.Miner
+	gasPrice *big.Int
 	etherbase common.Address
 
 	networkID     uint64
@@ -260,8 +260,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TxLookupLimit:    int64(min(config.TransactionHistory, math.MaxInt64)),
 			VmConfig: vm.Config{
 				EnablePreimageRecording: config.EnablePreimageRecording,
+				EnableWitnessStats:      config.EnableWitnessStats,
+				StatelessSelfValidation: config.StatelessSelfValidation,
 			},
 			Stateless: config.SyncMode == downloader.StatelessSync,
+			// Enables file journaling for the trie database. The journal files will be stored
+			// within the data directory. The corresponding paths will be either:
+			// - DATADIR/triedb/merkle.journal
+			// - DATADIR/triedb/verkle.journal
+			TrieJournalDirectory: stack.ResolvePath("triedb"),
+			StateSizeTracking:    config.EnableStateSizeTracking,
 		}
 	)
 
@@ -284,6 +292,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.OverrideOsaka != nil {
 		overrides.OverrideOsaka = config.OverrideOsaka
 	}
+	if config.OverrideBPO1 != nil {
+		overrides.OverrideBPO1 = config.OverrideBPO1
+	}
+	if config.OverrideBPO2 != nil {
+		overrides.OverrideBPO2 = config.OverrideBPO2
+	}
 	if config.OverrideVerkle != nil {
 		overrides.OverrideVerkle = config.OverrideVerkle
 	}
@@ -295,7 +309,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.ParallelEVM.Enable {
 		eth.blockchain, err = core.NewParallelBlockChain(chainDb, config.Genesis, eth.engine, options, config.ParallelEVM.SpeculativeProcesses, config.ParallelEVM.Enforce)
 	} else {
-		eth.blockchain, err = core.NewBlockChain(chainDb, config.Genesis, eth.engine, options)
+	eth.blockchain, err = core.NewBlockChain(chainDb, config.Genesis, eth.engine, options)
 	}
 
 	if err != nil {
@@ -337,10 +351,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.filterMaps = filterMaps
 	eth.closeFilterMaps = make(chan chan struct{})
 
-	if config.BlobPool.Datadir != "" {
-		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
-	}
-
+	// TxPool
 	if config.TxPool.Journal != "" {
 		config.TxPool.Journal = stack.ResolvePath(config.TxPool.Journal)
 	}
@@ -380,10 +391,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		Chain:                   eth.blockchain,
 		TxPool:                  eth.txPool,
 		Network:                 config.NetworkId,
-		Sync:                    config.SyncMode,
-		BloomCache:              uint64(cacheLimit),
-		EventMux:                eth.eventMux,
-		RequiredBlocks:          config.RequiredBlocks,
+		Sync:           config.SyncMode,
+		BloomCache:     uint64(cacheLimit),
+		EventMux:       eth.eventMux,
+		RequiredBlocks: config.RequiredBlocks,
 		EthAPI:                  blockChainAPI,
 		checker:                 checker,
 		enableBlockTracking:     eth.config.EnableBlockTracking,
@@ -671,7 +682,7 @@ func (s *Ethereum) Start() error {
 	// Regularly update shutdown marker
 	s.shutdownTracker.Start()
 
-	// Start the networking layer and the light server if requested
+	// Start the networking layer
 	s.handler.Start(s.p2pServer.MaxPeers)
 
 	// Start the connection manager
@@ -997,6 +1008,7 @@ func (s *Ethereum) Stop() error {
 		s.miner.Close()
 	}
 	s.blockchain.Stop()
+	s.engine.Close()
 
 	// Clean shutdown marker as the last thing before closing db
 	s.shutdownTracker.Stop()

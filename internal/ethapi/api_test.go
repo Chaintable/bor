@@ -33,11 +33,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/internal/ethapi/override"
-
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -55,6 +53,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/blocktest"
+	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
@@ -433,11 +432,13 @@ func newTestAccountManager(t *testing.T) (*accounts.Manager, accounts.Account) {
 }
 
 type testBackend struct {
-	db      ethdb.Database
-	chain   *core.BlockChain
-	pending *types.Block
-	accman  *accounts.Manager
-	acc     accounts.Account
+	db     ethdb.Database
+	chain  *core.BlockChain
+	accman *accounts.Manager
+	acc    accounts.Account
+
+	pending         *types.Block
+	pendingReceipts types.Receipts
 }
 
 func newTestBackend(t *testing.T, n int, gspec *core.Genesis, engine consensus.Engine, generator func(i int, b *core.BlockGen)) *testBackend {
@@ -447,22 +448,24 @@ func newTestBackend(t *testing.T, n int, gspec *core.Genesis, engine consensus.E
 	accman, acc := newTestAccountManager(t)
 	// gspec.Alloc[acc.Address] = types.Account{Balance: big.NewInt(params.Ether)}
 	// Generate blocks for testing
-	db, blocks, _ := core.GenerateChainWithGenesis(gspec, engine, n, generator)
+	db, blocks, receipts := core.GenerateChainWithGenesis(gspec, engine, n+1, generator)
 
 	chain, err := core.NewBlockChain(db, gspec, engine, options)
 	if err != nil {
 		t.Fatalf("failed to create tester chain: %v", err)
 	}
-	if n, err := chain.InsertChain(blocks, false); err != nil {
+	if n, err := chain.InsertChain(blocks[:n], false); err != nil {
 		t.Fatalf("block %d: failed to insert into chain: %v", n, err)
 	}
-
-	backend := &testBackend{db: db, chain: chain, accman: accman, acc: acc}
+	backend := &testBackend{
+		db:              db,
+		chain:           chain,
+		accman:          accman,
+		acc:             acc,
+		pending:         blocks[n],
+		pendingReceipts: receipts[n],
+	}
 	return backend
-}
-
-func (b *testBackend) setPendingBlock(block *types.Block) {
-	b.pending = block
 }
 
 func (b testBackend) SyncProgress(ctx context.Context) ethereum.SyncProgress {
@@ -556,7 +559,13 @@ func (b testBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockNrOr
 	}
 	panic("only implemented for number")
 }
-func (b testBackend) Pending() (*types.Block, types.Receipts, *state.StateDB) { panic("implement me") }
+func (b testBackend) Pending() (*types.Block, types.Receipts, *state.StateDB) {
+	block := b.pending
+	if block == nil {
+		return nil, nil, nil
+	}
+	return block, b.pendingReceipts, nil
+}
 func (b testBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.Receipts, error) {
 	header, err := b.HeaderByHash(ctx, hash)
 	if header == nil || err != nil {
@@ -608,6 +617,8 @@ func (b testBackend) GetCanonicalReceipt(tx *types.Transaction, blockHash common
 func (b testBackend) TxIndexDone() bool {
 	return true
 }
+func (b testBackend) GetPoolTransactions() (types.Transactions, error)         { panic("implement me") }
+func (b testBackend) GetPoolTransaction(txHash common.Hash) *types.Transaction { panic("implement me") }
 func (b testBackend) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {
 	return 0, nil
 }
@@ -3525,21 +3536,6 @@ func TestRPCGetBlockOrHeader(t *testing.T) {
 		}
 		genBlocks = 10
 		signer    = types.HomesteadSigner{}
-		tx        = types.NewTx(&types.LegacyTx{
-			Nonce:    11,
-			GasPrice: big.NewInt(11111),
-			Gas:      1111,
-			To:       &acc2Addr,
-			Value:    big.NewInt(111),
-			Data:     []byte{0x11, 0x11, 0x11},
-		})
-		withdrawal = &types.Withdrawal{
-			Index:     0,
-			Validator: 1,
-			Address:   common.Address{0x12, 0x34},
-			Amount:    10,
-		}
-		pending = types.NewBlock(&types.Header{Number: big.NewInt(11), Time: 42}, &types.Body{Transactions: types.Transactions{tx}, Withdrawals: types.Withdrawals{withdrawal}}, nil, blocktest.NewHasher())
 	)
 	backend := newTestBackend(t, genBlocks, genesis, ethash.NewFaker(), func(i int, b *core.BlockGen) {
 		// Transfer from account[0] to account[1]
@@ -3548,7 +3544,6 @@ func TestRPCGetBlockOrHeader(t *testing.T) {
 		tx, _ := types.SignTx(types.NewTx(&types.LegacyTx{Nonce: uint64(i), To: &acc2Addr, Value: big.NewInt(1000), Gas: params.TxGas, GasPrice: b.BaseFee(), Data: nil}), signer, acc1Key)
 		b.AddTx(tx)
 	})
-	backend.setPendingBlock(pending)
 	api := NewBlockChainAPI(backend)
 	blockHashes := make([]common.Hash, genBlocks+1)
 	ctx := t.Context()
@@ -3559,7 +3554,7 @@ func TestRPCGetBlockOrHeader(t *testing.T) {
 		}
 		blockHashes[i] = header.Hash()
 	}
-	pendingHash := pending.Hash()
+	pendingHash := backend.pending.Hash()
 
 	var testSuite = []struct {
 		blockNumber rpc.BlockNumber
@@ -3802,7 +3797,7 @@ func setupTransactionsToApiTest(t *testing.T) (*TransactionAPI, []common.Hash, [
 			},
 		}
 		signer   = types.LatestSignerForChainID(params.TestChainConfig.ChainID)
-		txHashes = make([]common.Hash, genBlocks+1)
+		txHashes = make([]common.Hash, 0, genBlocks+1)
 	)
 
 	// Set the terminal total difficulty in the config
@@ -3815,9 +3810,6 @@ func setupTransactionsToApiTest(t *testing.T) (*TransactionAPI, []common.Hash, [
 		)
 		b.SetPoS()
 		switch i {
-		case 0:
-			// transfer 1000wei
-			tx, err = types.SignTx(types.NewTx(&types.LegacyTx{Nonce: uint64(i), To: &acc2Addr, Value: big.NewInt(1000), Gas: params.TxGas, GasPrice: b.BaseFee(), Data: nil}), types.HomesteadSigner{}, acc1Key)
 		case 1:
 			// create contract
 			tx, err = types.SignTx(types.NewTx(&types.LegacyTx{Nonce: uint64(i), To: nil, Gas: 53100, GasPrice: b.BaseFee(), Data: common.FromHex("0x60806040")}), signer, acc1Key)
@@ -3840,13 +3832,30 @@ func setupTransactionsToApiTest(t *testing.T) (*TransactionAPI, []common.Hash, [
 				StorageKeys: []common.Hash{{0}},
 			}}
 			tx, err = types.SignTx(types.NewTx(&types.AccessListTx{Nonce: uint64(i), To: nil, Gas: 58100, GasPrice: b.BaseFee(), Data: common.FromHex("0x60806040"), AccessList: accessList}), signer, acc1Key)
+		case 5:
+			// blob tx
+			fee := big.NewInt(500)
+			fee.Add(fee, b.BaseFee())
+			tx, err = types.SignTx(types.NewTx(&types.BlobTx{
+				Nonce:      uint64(i),
+				GasTipCap:  uint256.NewInt(1),
+				GasFeeCap:  uint256.MustFromBig(fee),
+				Gas:        params.TxGas,
+				To:         acc2Addr,
+				BlobFeeCap: uint256.NewInt(1),
+				BlobHashes: []common.Hash{{1}},
+				Value:      new(uint256.Int),
+			}), signer, acc1Key)
+		default:
+			// transfer 1000wei
+			tx, err = types.SignTx(types.NewTx(&types.LegacyTx{Nonce: uint64(i), To: &acc2Addr, Value: big.NewInt(1000), Gas: params.TxGas, GasPrice: b.BaseFee(), Data: nil}), types.HomesteadSigner{}, acc1Key)
 		}
 		if err != nil {
 			t.Errorf("failed to sign tx: %v", err)
 		}
 		if tx != nil {
 			b.AddTx(tx)
-			txHashes[i] = tx.Hash()
+			txHashes = append(txHashes, tx.Hash())
 		}
 	})
 

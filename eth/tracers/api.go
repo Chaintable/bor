@@ -205,7 +205,7 @@ type TraceConfig struct {
 	IOFlag  *bool
 	// Config specific to given tracer. Note struct logger
 	// config are historically embedded in main object.
-	TracerConfig    json.RawMessage
+	TracerConfig json.RawMessage
 	BorTraceEnabled *bool
 	BorTx           *bool
 }
@@ -222,8 +222,8 @@ type TraceCallConfig struct {
 // StdTraceConfig holds extra parameters to standard-json trace functions.
 type StdTraceConfig struct {
 	logger.Config
-	Reexec          *uint64
-	TxHash          common.Hash
+	Reexec *uint64
+	TxHash common.Hash
 	BorTraceEnabled *bool
 }
 
@@ -1090,33 +1090,39 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 	}
 	for i, tx := range block.Transactions() {
 		// Prepare the transaction for un-traced execution
-		var (
-			msg, _ = core.TransactionToMessage(tx, signer, block.BaseFee())
-			vmConf vm.Config
-			dump   *os.File
-			writer *bufio.Writer
-			err    error
-		)
-		// If the transaction needs tracing, swap out the configs
-		if tx.Hash() == txHash || txHash == (common.Hash{}) || txHash == stateSyncHash {
-			// Generate a unique temporary file to dump it into
-			prefix := fmt.Sprintf("block_%#x-%d-%#x-", block.Hash().Bytes()[:4], i, tx.Hash().Bytes()[:4])
-			if !canon {
-				prefix = fmt.Sprintf("%valt-", prefix)
-			}
-			dump, err = os.CreateTemp(os.TempDir(), prefix)
+		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
+		if txHash != (common.Hash{}) && tx.Hash() != txHash {
+			// Process the tx to update state, but don't trace it.
+			_, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit))
 			if err != nil {
-				return nil, err
+				return dumps, err
 			}
-			dumps = append(dumps, dump.Name())
-
-			// Swap out the noop logger to the standard tracer
-			writer = bufio.NewWriter(dump)
-			vmConf = vm.Config{
-				Tracer:                  logger.NewJSONLogger(&logConfig, writer),
-				EnablePreimageRecording: true,
-			}
+			// Finalize the state so any modifications are written to the trie
+			// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
+			statedb.Finalise(evm.ChainConfig().IsEIP158(block.Number()))
+			continue
 		}
+		// The transaction should be traced.
+		// Generate a unique temporary file to dump it into.
+		prefix := fmt.Sprintf("block_%#x-%d-%#x-", block.Hash().Bytes()[:4], i, tx.Hash().Bytes()[:4])
+		if !canon {
+			prefix = fmt.Sprintf("%valt-", prefix)
+		}
+		var dump *os.File
+		dump, err := os.CreateTemp(os.TempDir(), prefix)
+		if err != nil {
+			return nil, err
+		}
+		dumps = append(dumps, dump.Name())
+		// Set up the tracer and EVM for the transaction.
+		var (
+			writer = bufio.NewWriter(dump)
+			tracer = logger.NewJSONLogger(&logConfig, writer)
+			evm    = vm.NewEVM(vmctx, statedb, chainConfig, vm.Config{
+				Tracer:    tracer,
+				NoBaseFee: true,
+			})
+		)
 		// Execute the transaction and flush any traces to disk
 		//nolint:nestif
 		if stateSyncPresent && i == len(txs)-1 {
@@ -1131,18 +1137,18 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 			}
 		} else {
 			statedb.SetTxContext(tx.Hash(), i)
-			if vmConf.Tracer.OnTxStart != nil {
-				vmConf.Tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
-			}
+		if tracer.OnTxStart != nil {
+			tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+		}
 
 			// nolint : contextcheck
 			vmRet, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit), nil)
 			if vmConf.Tracer.OnTxEnd != nil {
 				vmConf.Tracer.OnTxEnd(&types.Receipt{GasUsed: vmRet.UsedGas}, err)
 			}
-			if writer != nil {
-				writer.Flush()
-			}
+		if writer != nil {
+			writer.Flush()
+		}
 		}
 
 		if dump != nil {
@@ -1202,11 +1208,12 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 				StructLogs: make([]json.RawMessage, 0),
 			}, nil
 		} else {
-			// Warn in case tx indexer is not done.
-			if !api.backend.TxIndexDone() {
-				return nil, ethapi.NewTxIndexingError()
-			}
-			return nil, errTxNotFound
+		// Warn in case tx indexer is not done.
+		if !api.backend.TxIndexDone() {
+			return nil, ethapi.NewTxIndexingError()
+		}
+		// Only mined txes are supported
+		return nil, errTxNotFound
 		}
 	}
 	// It shouldn't happen in practice.
@@ -1297,41 +1304,45 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 
 	defer release()
 
-	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+	h := block.Header()
+	blockContext := core.NewEVMBlockContext(h, api.chainContext(ctx), nil)
 
 	// Apply the customization rules if required.
 	if config != nil {
 		if overrideErr := config.BlockOverrides.Apply(&vmctx); overrideErr != nil {
 			return nil, overrideErr
 		}
-		rules := api.backend.ChainConfig().Rules(vmctx.BlockNumber, vmctx.Random != nil, vmctx.Time)
-
+		if err := config.BlockOverrides.Apply(&blockContext); err != nil {
+			return nil, err
+		}
+		rules := api.backend.ChainConfig().Rules(blockContext.BlockNumber, blockContext.Random != nil, blockContext.Time)
 		precompiles = vm.ActivePrecompiledContracts(rules)
 		if err := config.StateOverrides.Apply(statedb, precompiles); err != nil {
 			return nil, err
 		}
 	}
-	// Execute the trace
-	if err := args.CallDefaults(api.backend.RPCGasCap(), vmctx.BaseFee, api.backend.ChainConfig().ChainID); err != nil {
+
+	// Execute the trace.
+	if err := args.CallDefaults(api.backend.RPCGasCap(), blockContext.BaseFee, api.backend.ChainConfig().ChainID); err != nil {
 		return nil, err
 	}
 	var (
-		msg         = args.ToMessage(vmctx.BaseFee, true, true)
+		msg         = args.ToMessage(blockContext.BaseFee, true)
 		tx          = args.ToTransaction(types.LegacyTxType)
 		traceConfig *TraceConfig
 	)
 	// Lower the basefee to 0 to avoid breaking EVM
 	// invariants (basefee < feecap).
 	if msg.GasPrice.Sign() == 0 {
-		vmctx.BaseFee = new(big.Int)
+		blockContext.BaseFee = new(big.Int)
 	}
 	if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
-		vmctx.BlobBaseFee = new(big.Int)
+		blockContext.BlobBaseFee = new(big.Int)
 	}
 	if config != nil {
 		traceConfig = &config.TraceConfig
 	}
-	return api.traceTx(ctx, tx, msg, new(Context), vmctx, statedb, traceConfig, precompiles)
+	return api.traceTx(ctx, tx, msg, new(Context), blockContext, statedb, traceConfig, precompiles)
 }
 
 // traceTx configures a new tracer according to the provided configuration, and

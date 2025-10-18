@@ -20,9 +20,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"maps"
+	"slices"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/eth/protocols/wit"
@@ -350,14 +351,20 @@ func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {
 	defer ps.lock.RUnlock()
 
 	list := make([]*ethPeer, 0, len(ps.peers))
-
 	for _, p := range ps.peers {
 		if !p.KnownTransaction(hash) {
 			list = append(list, p)
 		}
 	}
-
 	return list
+}
+
+// all returns all current peers.
+func (ps *peerSet) all() []*ethPeer {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	return slices.Collect(maps.Values(ps.peers))
 }
 
 // len returns if the current number of `eth` peers in the set. Since the `snap`
