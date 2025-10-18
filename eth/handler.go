@@ -723,10 +723,14 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		case tx.Size() > txMaxBroadcastSize:
 			largeTxs++
 		default:
-			// Get transaction sender address. Here we can ignore any error
-			// since we're just interested in any value.
-			txSender, _ := types.Sender(signer, tx)
-			directSet = choice.choosePeers(peers, txSender)
+			// bor: respect announce-only mode
+			// If enabled, skip selecting direct peers so we only announce hashes.
+			if !h.txAnnouncementOnly {
+				// Get transaction sender address. Here we can ignore any error
+				// since we're just interested in any value.
+				txSender, _ := types.Sender(signer, tx)
+				directSet = choice.choosePeers(peers, txSender)
+			}
 		}
 
 		for _, peer := range peers {

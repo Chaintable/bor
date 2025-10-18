@@ -452,8 +452,6 @@ func TestSendTransactionAnnouncementsOnly68(t *testing.T) {
 }
 
 func testSendTransactionAnnouncementsOnly(t *testing.T, protocol uint) {
-	// TODO marcello fix and enable
-	t.Skip("bor: fix and enable")
 	t.Parallel()
 
 	// Create a source handler that has txannouncementonly enabled
