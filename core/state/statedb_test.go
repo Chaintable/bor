@@ -674,7 +674,7 @@ func (test *snapshotTest) checkEqual(state, checkstate *StateDB) error {
 		{
 			have := state.transientStorage
 			want := checkstate.transientStorage
-			if !maps.EqualFunc(have, want, maps.Equal) {
+			if !have.EqualTS(want) {
 				return fmt.Errorf("transient storage differs ,have\n%v\nwant\n%v",
 					have.PrettyPrint(),
 					want.PrettyPrint())
@@ -1996,4 +1996,47 @@ func TestStorageDirtiness(t *testing.T) {
 	// the storage change is reverted, dirty value should be set back
 	state.RevertToSnapshot(snap)
 	checkDirty(common.Hash{0x1}, common.Hash{0x1}, true)
+}
+
+func TestShouldDeleteSmartContractIfItExistsInState(t *testing.T) {
+	t.Parallel()
+
+	code := []byte{1, 2, 3}
+
+	db := NewDatabase(triedb.NewDatabase(rawdb.NewMemoryDatabase(), triedb.HashDefaults), nil)
+	mvhm := blockstm.MakeMVHashMap()
+	s, _ := NewWithMVHashmap(common.Hash{}, db, nil, mvhm)
+
+	addr := common.HexToAddress("0x01")
+	s.getOrNewStateObject(addr)
+	s.CreateContract(addr)
+	s.SetCode(addr, code, tracing.CodeChangeUnspecified)
+	s.Finalise(true)
+
+	secondDB := s.Copy()
+	secondDB.SelfDestruct(addr)
+
+	codeBeforeDeletion := s.GetCode(addr)
+	assert.Equal(t, code, codeBeforeDeletion, "smart contract should exist before deletion")
+
+	s.ApplyMVWriteSet(secondDB.MVWriteList())
+	s.Finalise(true)
+
+	codeAfterDeletion := s.GetCode(addr)
+	assert.Equal(t, []byte(nil), codeAfterDeletion, "smart contract should be deleted")
+}
+
+// EqualTS is a transientStorage's helper method for comparing transient storage maps.
+func (t transientStorage) EqualTS(other transientStorage) bool {
+	// Compare the maps
+	if len(t) != len(other) {
+		return false
+	}
+	for k, v := range t {
+		ov, ok := other[k]
+		if !ok || !maps.Equal(v, ov) {
+			return false
+		}
+	}
+	return true
 }

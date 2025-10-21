@@ -82,8 +82,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		WitnessPruneInterval    time.Duration
 		OverrideVerkle          *big.Int `toml:",omitempty"`
 		OverrideOsaka           *big.Int `toml:",omitempty"`
-		OverrideBPO1            *big.Int `toml:",omitempty"`
-		OverrideBPO2            *big.Int `toml:",omitempty"`
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -144,8 +142,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.SyncAndProduceWitnesses = c.SyncAndProduceWitnesses
 	enc.DevFakeAuthor = c.DevFakeAuthor
 	enc.OverrideOsaka = c.OverrideOsaka
-	enc.OverrideBPO1 = c.OverrideBPO1
-	enc.OverrideBPO2 = c.OverrideBPO2
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.EnableBlockTracking = c.EnableBlockTracking
 	enc.FastForwardThreshold = c.FastForwardThreshold
@@ -219,8 +215,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		WitnessPruneThreshold   *uint64
 		WitnessPruneInterval    *time.Duration
 		OverrideOsaka           *big.Int `toml:",omitempty"`
-		OverrideBPO1            *big.Int `toml:",omitempty"`
-		OverrideBPO2            *big.Int `toml:",omitempty"`
 		OverrideVerkle          *big.Int `toml:",omitempty"`
 	}
 	var dec Config
@@ -400,12 +394,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.OverrideOsaka != nil {
 		c.OverrideOsaka = dec.OverrideOsaka
-	}
-	if dec.OverrideBPO1 != nil {
-		c.OverrideBPO1 = dec.OverrideBPO1
-	}
-	if dec.OverrideBPO2 != nil {
-		c.OverrideBPO2 = dec.OverrideBPO2
 	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle
