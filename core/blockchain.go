@@ -17,8 +17,6 @@
 // Package core implements the Ethereum consensus protocol.
 package core
 
-// TODO marcello double check this file
-
 import (
 	"bytes"
 	"context"

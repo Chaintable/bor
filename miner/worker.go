@@ -16,8 +16,6 @@
 
 package miner
 
-// TODO marcello double check this file
-
 import (
 	"context"
 	"errors"

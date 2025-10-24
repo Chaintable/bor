@@ -1111,8 +1111,6 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state vm.StateDB) 
 				state.SetCode(addr, account.Code, tracing.CodeChangeContractCreation)
 
 				if state.GetBalance(addr).Cmp(uint256.NewInt(0)) == 0 {
-					// todo: @anshalshukla - check tracing reason
-					// TODO marcello does this require a HF?
 					state.SetBalance(addr, uint256.MustFromBig(account.Balance), tracing.BalanceChangeUnspecified)
 				}
 			}

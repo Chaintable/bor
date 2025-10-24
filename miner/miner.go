@@ -17,8 +17,6 @@
 // Package miner implements Ethereum block creation and mining.
 package miner
 
-// TODO marcello double check this file
-
 import (
 	"fmt"
 	"math/big"
