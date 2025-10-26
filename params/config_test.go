@@ -696,7 +696,7 @@ func parseBalance(v interface{}) (*big.Int, error) {
 			}
 			return z, nil
 		} else {
-		return nil, fmt.Errorf("unsupported balance type %T (%v)", v, v)
+			return nil, fmt.Errorf("unsupported balance type %T (%v)", v, v)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported balance type %T (%v)", v, v)
