@@ -257,18 +257,19 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	var (
 		options = &core.BlockChainConfig{
-			TrieCleanLimit:   config.TrieCleanCache,
-			NoPrefetch:       config.NoPrefetch,
-			TrieDirtyLimit:   config.TrieDirtyCache,
-			ArchiveMode:      config.NoPruning,
-			TrieTimeLimit:    config.TrieTimeout,
-			SnapshotLimit:    config.SnapshotCache,
-			Preimages:        config.Preimages,
-			StateHistory:     config.StateHistory,
-			StateScheme:      scheme,
-			TriesInMemory:    config.TriesInMemory,
-			ChainHistoryMode: config.HistoryMode,
-			TxLookupLimit:    int64(min(config.TransactionHistory, math.MaxInt64)),
+			TrieCleanLimit:    config.TrieCleanCache,
+			NoPrefetch:        config.NoPrefetch,
+			TrieDirtyLimit:    config.TrieDirtyCache,
+			ArchiveMode:       config.NoPruning,
+			TrieTimeLimit:     config.TrieTimeout,
+			SnapshotLimit:     config.SnapshotCache,
+			Preimages:         config.Preimages,
+			StateHistory:      config.StateHistory,
+			StateScheme:       scheme,
+			TriesInMemory:     config.TriesInMemory,
+			ChainHistoryMode:  config.HistoryMode,
+			TxLookupLimit:     int64(min(config.TransactionHistory, math.MaxInt64)),
+			AddressCacheSizes: config.AddressCacheSizes,
 			VmConfig: vm.Config{
 				EnablePreimageRecording: config.EnablePreimageRecording,
 				EnableWitnessStats:      config.EnableWitnessStats,
@@ -363,6 +364,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	eth.filterMaps = filterMaps
 	eth.closeFilterMaps = make(chan chan struct{})
+
+	if config.BlobPool.Datadir != "" {
+		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
+	}
 
 	// TxPool
 	if config.TxPool.Journal != "" {

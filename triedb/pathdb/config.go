@@ -76,6 +76,10 @@ type Config struct {
 	ReadOnly            bool   // Flag whether the database is opened in read only mode
 	JournalDirectory    string // Absolute path of journal directory (null means the journal data is persisted in key-value store)
 
+	// Address-specific cache configuration for biased caching
+	// Maps account address to cache size in bytes
+	AddressCacheSizes map[common.Address]int
+
 	// Testing configurations
 	SnapshotNoBuild   bool   // Flag Whether the state generation is disabled
 	NoAsyncFlush      bool   // Flag whether the background buffer flushing is disabled

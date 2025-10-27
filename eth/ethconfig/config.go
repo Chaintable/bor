@@ -155,6 +155,10 @@ type Config struct {
 	// for eth_getLogs.
 	LogQueryLimit int
 
+	// Address-specific cache sizes for biased caching (pathdb only)
+	// Maps account address to cache size in bytes
+	AddressCacheSizes map[common.Address]int
+
 	// Mining options
 	Miner miner.Config
 
