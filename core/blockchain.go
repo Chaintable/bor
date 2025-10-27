@@ -2658,7 +2658,7 @@ func (bc *BlockChain) insertChainStatelessParallel(chain types.Blocks, witnesses
 
 		// Only commit blocks that don't need retry
 		if !results[i].needsRetry {
-			if _, werr := bc.writeBlockAndSetHead(block, nil, nil, results[i].sdb, false, true); werr != nil {
+			if _, werr := bc.writeBlockAndSetHead(block, nil, nil, results[i].sdb, true, true); werr != nil {
 				stopHeaders()
 				return int(processed.Load()), werr
 			}
@@ -2688,7 +2688,7 @@ func (bc *BlockChain) insertChainStatelessParallel(chain types.Blocks, witnesses
 			results[i].gasUsed = res.GasUsed
 
 			// Commit the block after successful retry
-			if _, werr := bc.writeBlockAndSetHead(block, nil, nil, sdb, false, true); werr != nil {
+			if _, werr := bc.writeBlockAndSetHead(block, nil, nil, sdb, true, true); werr != nil {
 				stopHeaders()
 				return int(processed.Load()), werr
 			}
@@ -2794,7 +2794,7 @@ func (bc *BlockChain) insertChainStatelessSequential(chain types.Blocks, witness
 			}
 		}
 
-		if _, werr := bc.writeBlockAndSetHead(block, nil, nil, statedb, false, true); werr != nil {
+		if _, werr := bc.writeBlockAndSetHead(block, nil, nil, statedb, true, true); werr != nil {
 			return int(processed.Load()), werr
 		}
 		processed.Add(1)
