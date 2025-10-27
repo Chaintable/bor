@@ -19,69 +19,75 @@ import (
 // MarshalTOML marshals as TOML.
 func (c Config) MarshalTOML() (interface{}, error) {
 	type Config struct {
-		Genesis                 *core.Genesis `toml:",omitempty"`
-		NetworkId               uint64
-		SyncMode                downloader.SyncMode
-		HistoryMode             history.HistoryMode
-		EthDiscoveryURLs        []string
-		SnapDiscoveryURLs       []string
-		NoPruning               bool
-		NoPrefetch              bool
-		TxLookupLimit           uint64 `toml:",omitempty"`
-		TransactionHistory      uint64 `toml:",omitempty"`
-		LogHistory              uint64 `toml:",omitempty"`
-		LogNoHistory            bool   `toml:",omitempty"`
-		LogExportCheckpoints    string
-		StateHistory            uint64                 `toml:",omitempty"`
-		StateScheme             string                 `toml:",omitempty"`
-		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
-		SkipBcVersionCheck      bool                   `toml:"-"`
-		DatabaseHandles         int                    `toml:"-"`
-		DatabaseCache           int
-		DatabaseFreezer         string
-		DatabaseEra             string
-		TrieCleanCache          int
-		TrieDirtyCache          int
-		TrieTimeout             time.Duration
-		SnapshotCache           int
-		Preimages               bool
-		TriesInMemory           uint64
-		FilterLogCacheSize      int
-		LogQueryLimit           int
-		Miner                   miner.Config
-		TxPool                  legacypool.Config
-		BlobPool                blobpool.Config
-		GPO                     gasprice.Config
-		EnablePreimageRecording bool
-		EnableWitnessStats      bool
-		StatelessSelfValidation bool
-		EnableStateSizeTracking bool
-		VMTrace                 string
-		VMTraceJsonConfig       string
-		RPCGasCap               uint64
-		RPCReturnDataLimit      uint64
-		RPCEVMTimeout           time.Duration
-		RPCTxFeeCap             float64
-		HeimdallURL             string
-		HeimdallTimeout         time.Duration
-		WithoutHeimdall         bool
-		HeimdallgRPCAddress     string
-		HeimdallWSAddress       string
-		RunHeimdall             bool
-		RunHeimdallArgs         string
-		UseHeimdallApp          bool
-		BorLogs                 bool
-		ParallelEVM             core.ParallelEVMConfig `toml:",omitempty"`
-		WitnessProtocol         bool
-		SyncWithWitnesses       bool
-		SyncAndProduceWitnesses bool
-		DevFakeAuthor           bool `hcl:"devfakeauthor,optional" toml:"devfakeauthor,optional"`
-		EnableBlockTracking     bool
-		FastForwardThreshold    uint64
-		WitnessPruneThreshold   uint64
-		WitnessPruneInterval    time.Duration
-		OverrideVerkle          *big.Int `toml:",omitempty"`
-		OverrideOsaka           *big.Int `toml:",omitempty"`
+		Genesis                 			 *core.Genesis `toml:",omitempty"`
+		NetworkId               			 uint64
+		SyncMode                			 downloader.SyncMode
+		HistoryMode             			 history.HistoryMode
+		EthDiscoveryURLs        			 []string
+		SnapDiscoveryURLs       			 []string
+		NoPruning               			 bool
+		NoPrefetch              			 bool
+		TxLookupLimit           			 uint64 `toml:",omitempty"`
+		TransactionHistory      			 uint64 `toml:",omitempty"`
+		LogHistory              			 uint64 `toml:",omitempty"`
+		LogNoHistory            			 bool   `toml:",omitempty"`
+		LogExportCheckpoints    			 string
+		StateHistory            			 uint64                 `toml:",omitempty"`
+		StateScheme             			 string                 `toml:",omitempty"`
+		RequiredBlocks          			 map[uint64]common.Hash `toml:"-"`
+		SkipBcVersionCheck      			 bool                   `toml:"-"`
+		DatabaseHandles         			 int                    `toml:"-"`
+		DatabaseCache           			 int
+		DatabaseFreezer         			 string
+		DatabaseEra             			 string
+		LevelDbCompactionTableSize           uint64
+		LevelDbCompactionTableSizeMultiplier float64
+		LevelDbCompactionTotalSize           uint64
+		LevelDbCompactionTotalSizeMultiplier float64
+		TrieCleanCache                       int
+		TrieDirtyCache                       int
+		TrieTimeout                          time.Duration
+		SnapshotCache                        int
+		Preimages                            bool
+		TriesInMemory                        uint64
+		FilterLogCacheSize                   int
+		LogQueryLimit           			 int
+		Miner                                miner.Config
+		TxPool                               legacypool.Config
+		BlobPool                             blobpool.Config
+		GPO                                  gasprice.Config
+		EnablePreimageRecording              bool
+		EnableWitnessStats      			 bool
+		StatelessSelfValidation              bool
+		EnableStateSizeTracking              bool
+		VMTrace                              string
+		VMTraceJsonConfig                    string
+		RPCGasCap                            uint64
+		RPCReturnDataLimit                   uint64
+		RPCEVMTimeout                        time.Duration
+		RPCTxFeeCap             		     float64
+		HeimdallURL             			 string
+		HeimdallTimeout         			 time.Duration
+		WithoutHeimdall         			 bool
+		HeimdallgRPCAddress     			 string
+		HeimdallWSAddress       			 string
+		RunHeimdall             			 bool
+		RunHeimdallArgs         			 string
+		UseHeimdallApp          			 bool
+		BorLogs                 			 bool
+		ParallelEVM             			 core.ParallelEVMConfig `toml:",omitempty"`
+		WitnessProtocol         			 bool
+		SyncWithWitnesses       			 bool
+		SyncAndProduceWitnesses 			 bool
+		DevFakeAuthor           			 bool `hcl:"devfakeauthor,optional" toml:"devfakeauthor,optional"`
+		EnableBlockTracking     			 bool
+		FastForwardThreshold    			 uint64
+		WitnessPruneThreshold                uint64
+		WitnessPruneInterval                 time.Duration
+		EnableParallelStatelessImport        bool
+		EnableParallelStatelessImportWorkers int
+		OverrideVerkle          			 *big.Int `toml:",omitempty"`
+		OverrideOsaka           			 *big.Int `toml:",omitempty"`
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -147,75 +153,83 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.FastForwardThreshold = c.FastForwardThreshold
 	enc.WitnessPruneThreshold = c.WitnessPruneThreshold
 	enc.WitnessPruneInterval = c.WitnessPruneInterval
+	enc.EnableParallelStatelessImport = c.EnableParallelStatelessImport
+	enc.EnableParallelStatelessImportWorkers = c.EnableParallelStatelessImportWorkers
 	return &enc, nil
 }
 
 // UnmarshalTOML unmarshals from TOML.
 func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	type Config struct {
-		Genesis                 *core.Genesis `toml:",omitempty"`
-		NetworkId               *uint64
-		SyncMode                *downloader.SyncMode
-		HistoryMode             *history.HistoryMode
-		EthDiscoveryURLs        []string
-		SnapDiscoveryURLs       []string
-		NoPruning               *bool
-		NoPrefetch              *bool
-		TxLookupLimit           *uint64 `toml:",omitempty"`
-		TransactionHistory      *uint64 `toml:",omitempty"`
-		LogHistory              *uint64 `toml:",omitempty"`
-		LogNoHistory            *bool   `toml:",omitempty"`
-		LogExportCheckpoints    *string
-		StateHistory            *uint64                `toml:",omitempty"`
-		StateScheme             *string                `toml:",omitempty"`
-		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
-		SkipBcVersionCheck      *bool                  `toml:"-"`
-		DatabaseHandles         *int                   `toml:"-"`
-		DatabaseCache           *int
-		DatabaseFreezer         *string
-		DatabaseEra             *string
-		TrieCleanCache          *int
-		TrieDirtyCache          *int
-		TrieTimeout             *time.Duration
-		SnapshotCache           *int
-		Preimages               *bool
-		TriesInMemory           *uint64
-		FilterLogCacheSize      *int
-		LogQueryLimit           *int
-		Miner                   *miner.Config
-		TxPool                  *legacypool.Config
-		BlobPool                *blobpool.Config
-		GPO                     *gasprice.Config
-		EnablePreimageRecording *bool
-		EnableWitnessStats      *bool
-		StatelessSelfValidation *bool
-		EnableStateSizeTracking *bool
-		VMTrace                 *string
-		VMTraceJsonConfig       *string
-		RPCGasCap               *uint64
-		RPCReturnDataLimit      *uint64
-		RPCEVMTimeout           *time.Duration
-		RPCTxFeeCap             *float64
-		HeimdallURL             *string
-		HeimdallTimeout         *time.Duration
-		WithoutHeimdall         *bool
-		HeimdallgRPCAddress     *string
-		HeimdallWSAddress       *string
-		RunHeimdall             *bool
-		RunHeimdallArgs         *string
-		UseHeimdallApp          *bool
-		BorLogs                 *bool
-		ParallelEVM             *core.ParallelEVMConfig `toml:",omitempty"`
-		WitnessProtocol         *bool
-		SyncWithWitnesses       *bool
-		SyncAndProduceWitnesses *bool
-		DevFakeAuthor           *bool `hcl:"devfakeauthor,optional" toml:"devfakeauthor,optional"`
-		EnableBlockTracking     *bool
-		FastForwardThreshold    *uint64
-		WitnessPruneThreshold   *uint64
-		WitnessPruneInterval    *time.Duration
-		OverrideOsaka           *big.Int `toml:",omitempty"`
-		OverrideVerkle          *big.Int `toml:",omitempty"`
+		Genesis                              *core.Genesis `toml:",omitempty"`
+		NetworkId                            *uint64
+		SyncMode                             *downloader.SyncMode
+		HistoryMode                          *history.HistoryMode
+		EthDiscoveryURLs                     []string
+		SnapDiscoveryURLs                    []string
+		NoPruning                            *bool
+		NoPrefetch                           *bool
+		TxLookupLimit                        *uint64 `toml:",omitempty"`
+		TransactionHistory                   *uint64 `toml:",omitempty"`
+		LogHistory                           *uint64 `toml:",omitempty"`
+		LogNoHistory                         *bool   `toml:",omitempty"`
+		LogExportCheckpoints                 *string
+		StateHistory                         *uint64                `toml:",omitempty"`
+		StateScheme                          *string                `toml:",omitempty"`
+		RequiredBlocks                       map[uint64]common.Hash `toml:"-"`
+		SkipBcVersionCheck                   *bool                  `toml:"-"`
+		DatabaseHandles                      *int                   `toml:"-"`
+		DatabaseCache                        *int
+		DatabaseFreezer                      *string
+		DatabaseEra                          *string
+		LevelDbCompactionTableSize           *uint64
+		LevelDbCompactionTableSizeMultiplier *float64
+		LevelDbCompactionTotalSize           *uint64
+		LevelDbCompactionTotalSizeMultiplier *float64
+		TrieCleanCache                       *int
+		TrieDirtyCache                       *int
+		TrieTimeout                          *time.Duration
+		SnapshotCache                        *int
+		Preimages                            *bool
+		TriesInMemory                        *uint64
+		FilterLogCacheSize                   *int
+		LogQueryLimit           			 *int
+		Miner                                *miner.Config
+		TxPool                               *legacypool.Config
+		BlobPool                             *blobpool.Config
+		GPO                                  *gasprice.Config
+		EnablePreimageRecording              *bool
+		EnableWitnessStats      			 *bool
+		StatelessSelfValidation 			 *bool
+		EnableStateSizeTracking 			 *bool
+		VMTrace                              *string
+		VMTraceJsonConfig                    *string
+		RPCGasCap                            *uint64
+		RPCReturnDataLimit                   *uint64
+		RPCEVMTimeout                        *time.Duration
+		RPCTxFeeCap                          *float64
+		HeimdallURL                          *string
+		HeimdallTimeout                      *time.Duration
+		WithoutHeimdall                      *bool
+		HeimdallgRPCAddress                  *string
+		HeimdallWSAddress                    *string
+		RunHeimdall                          *bool
+		RunHeimdallArgs                      *string
+		UseHeimdallApp                       *bool
+		BorLogs                              *bool
+		ParallelEVM                          *core.ParallelEVMConfig `toml:",omitempty"`
+		WitnessProtocol                      *bool
+		SyncWithWitnesses                    *bool
+		SyncAndProduceWitnesses              *bool
+		DevFakeAuthor                        *bool    `hcl:"devfakeauthor,optional" toml:"devfakeauthor,optional"`
+		EnableBlockTracking                  *bool
+		FastForwardThreshold                 *uint64
+		WitnessPruneThreshold  				 *uint64
+		WitnessPruneInterval   				 *time.Duration
+		EnableParallelStatelessImport        *bool
+		EnableParallelStatelessImportWorkers *int
+		OverrideOsaka          				 *big.Int `toml:",omitempty"`
+		OverrideVerkle         				 *big.Int `toml:",omitempty"`
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -409,6 +423,12 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.WitnessPruneInterval != nil {
 		c.WitnessPruneInterval = *dec.WitnessPruneInterval
+	}
+	if dec.EnableParallelStatelessImport != nil {
+		c.EnableParallelStatelessImport = *dec.EnableParallelStatelessImport
+	}
+	if dec.EnableParallelStatelessImportWorkers != nil {
+		c.EnableParallelStatelessImportWorkers = *dec.EnableParallelStatelessImportWorkers
 	}
 	return nil
 }

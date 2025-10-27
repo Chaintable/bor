@@ -791,6 +791,10 @@ func (b testBackend) HistoryPruningCutoff() uint64 {
 	return bn
 }
 
+func (b testBackend) IsParallelImportActive() bool {
+	return false
+}
+
 func TestEstimateGas(t *testing.T) {
 	t.Parallel()
 	// Initialize test accounts

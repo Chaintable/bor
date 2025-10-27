@@ -599,6 +599,20 @@ func (mr *MockBackendMockRecorder) HistoryPruningCutoff() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HistoryPruningCutoff", reflect.TypeOf((*MockBackend)(nil).HistoryPruningCutoff))
 }
 
+// IsParallelImportActive mocks base method.
+func (m *MockBackend) IsParallelImportActive() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsParallelImportActive")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsParallelImportActive indicates an expected call of IsParallelImportActive.
+func (mr *MockBackendMockRecorder) IsParallelImportActive() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsParallelImportActive", reflect.TypeOf((*MockBackend)(nil).IsParallelImportActive))
+}
+
 // NewMatcherBackend mocks base method.
 func (m *MockBackend) NewMatcherBackend() filtermaps.MatcherBackend {
 	m.ctrl.T.Helper()
