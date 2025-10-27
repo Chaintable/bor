@@ -1550,40 +1550,47 @@ type configResponse struct {
 	Last    *config `json:"last"`
 }
 
-// Config implements the EIP-7910 eth_config method.
 func (api *BlockChainAPI) Config(ctx context.Context) (*configResponse, error) {
 	genesis, err := api.b.HeaderByNumber(ctx, 0)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load genesis: %w", err)
 	}
-	assemble := func(c *params.ChainConfig, ts *big.Int) *config {
-		var (
-			rules       = c.Rules(c.LondonBlock, true, 0)
-			precompiles = make(map[string]common.Address)
-		)
-		for addr, c := range vm.ActivePrecompiledContracts(rules) {
-			precompiles[c.Name()] = addr
+
+	c := api.b.ChainConfig()
+	head := api.b.CurrentHeader()
+	headNum := head.Number.Uint64()
+	headTime := head.Time
+
+	assemble := func(c *params.ChainConfig, bn *big.Int) *config {
+		if bn == nil {
+			return nil
 		}
-		forkid := forkid.NewID(c, types.NewBlockWithHeader(genesis), ^uint64(0), ts.Uint64()).Hash
+
+		rules := c.Rules(bn, true, 0)
+
+		precompiles := make(map[string]common.Address)
+		for addr, pc := range vm.ActivePrecompiledContracts(rules) {
+			precompiles[pc.Name()] = addr
+		}
+
+		// forkId from the current head
+		fId := forkid.NewID(c, types.NewBlockWithHeader(genesis), headNum, headTime).Hash
+
 		return &config{
-			ActivationBlock: *new(big.Int).SetInt64(int64(c.LatestFork(ts.Uint64()))),
-			BlobSchedule:    c.BlobConfig(c.LatestFork(ts.Uint64())),
+			ActivationBlock: *new(big.Int).SetInt64(int64(c.LatestFork(bn.Uint64()))),
 			ChainId:         (*hexutil.Big)(c.ChainID),
-			ForkId:          forkid[:],
+			ForkId:          fId[:],
 			Precompiles:     precompiles,
-			SystemContracts: c.ActiveSystemContracts(ts.Uint64()),
+			SystemContracts: c.ActiveSystemContracts(bn.Uint64()),
 		}
 	}
-	var (
-		c = api.b.ChainConfig()
-		t = api.b.CurrentHeader().Number.Uint64()
-	)
+
+	t := headNum
 	resp := configResponse{
-		Next:    assemble(c, c.Block(c.LatestFork(t)+1)),
 		Current: assemble(c, c.Block(c.LatestFork(t))),
+		Next:    assemble(c, c.Block(c.LatestFork(t)+1)),
 		Last:    assemble(c, c.Block(c.LatestFork(^uint64(0)))),
 	}
-	// Nil out last if no future-fork is configured.
 	if resp.Next == nil {
 		resp.Last = nil
 	}

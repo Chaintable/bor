@@ -1476,7 +1476,7 @@ func (c *ChainConfig) ElasticityMultiplier() uint64 {
 }
 
 // LatestFork returns the latest time-based fork that would be active for the given time.
-func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
+func (c *ChainConfig) LatestFork(_ uint64) forks.Fork {
 	// Assume last non-time-based fork has passed.
 	london := c.LondonBlock
 
