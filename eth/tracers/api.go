@@ -1092,7 +1092,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 	for i, tx := range block.Transactions() {
 		// Prepare the transaction for un-traced execution
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
-		if txHash != (common.Hash{}) && tx.Hash() != txHash {
+		if txHash != (common.Hash{}) && tx.Hash() != txHash && txHash != stateSyncHash {
 			// Process the tx to update state, but don't trace it.
 			_, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit), nil)
 			if err != nil {
@@ -1133,7 +1133,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 				_, err = statefull.ApplyBorMessage(evm, callmsg)
 
 				if writer != nil {
-					writer.Flush()
+					_ = writer.Flush()
 				}
 			}
 		} else {
@@ -1148,7 +1148,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 				tracer.OnTxEnd(&types.Receipt{GasUsed: vmRet.UsedGas}, err)
 			}
 			if writer != nil {
-				writer.Flush()
+				_ = writer.Flush()
 			}
 		}
 
