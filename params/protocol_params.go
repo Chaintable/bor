@@ -190,7 +190,7 @@ const (
 
 	MaxBlockSize = 8_388_608 // maximum size of an RLP-encoded block
 
-	// BorDefaultMinerGasPrice defines the minimum gas price for bor validators to mine a transaction.
+	// BorDefaultMinerGasPrice defines the minimum gas price to mine a transaction.
 	BorDefaultMinerGasPrice = 25 * GWei
 
 	// BorDefaultTxPoolPriceLimit defines the minimum gas price limit for bor to enforce txs acceptance into the pool.
