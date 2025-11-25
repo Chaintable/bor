@@ -389,7 +389,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			// the offset to it i.e. start block of leveldb = frozen + offset.
 			startBlock := frozen + offset
 			var kvhash []byte
-			if kvhash, _ = db.Get(headerHashKey(startBlock)); len(kvhash) == 0 {
+			if kvhash, _ = db.Get(headerHashKey(startBlock)); len(kvhash) == 0 && !opts.Stateless {
 				// Subsequent header after the freezer limit is missing from the database.
 				// Reject startup if the database has a more recent head.
 				head, ok := ReadHeaderNumber(db, ReadHeadHeaderHash(db))
@@ -418,7 +418,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			// We might have duplicate blocks (crash after freezer write but before key-value
 			// store deletion, but that's fine). Still, check if the first block of key-value
 			// store points to last block in freezer.
-			if head := ReadHeaderFromKvStore(db, common.BytesToHash(kvhash), startBlock); head != nil {
+			if head := ReadHeaderFromKvStore(db, common.BytesToHash(kvhash), startBlock); head != nil && !opts.Stateless {
 				parentHash := head.ParentHash.Bytes()
 				ancientParentHash, _ := frdb.Ancient(ChainFreezerHashTable, startBlock-1)
 				if ancientParentHash == nil {

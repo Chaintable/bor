@@ -376,6 +376,10 @@ func (tx *Transaction) GasTipCapIntCmp(other *big.Int) int {
 // returns ErrGasFeeCapTooLow, and value is undefined.
 func (tx *Transaction) EffectiveGasTip(baseFee *big.Int) (*big.Int, error) {
 	dst := new(uint256.Int)
+	if tx.Type() == StateSyncTxType {
+		dst = uint256.NewInt(0)
+		return dst.ToBig(), nil
+	}
 	base := new(uint256.Int)
 	if baseFee != nil {
 		if base.SetFromBig(baseFee) {
