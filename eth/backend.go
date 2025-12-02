@@ -238,11 +238,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	gpoParams := config.GPO
 
 	blockChainAPI := ethapi.NewBlockChainAPI(eth.APIBackend)
-	engine, err := ethconfig.CreateConsensusEngine(config.Genesis.Config, config, chainDb, blockChainAPI)
-	eth.engine = engine
-	if err != nil {
-		return nil, err
-	}
 	// END: Bor changes
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
@@ -293,6 +288,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			return nil, fmt.Errorf("failed to create tracer %s: %v", config.VMTrace, err)
 		}
 		options.VmConfig.Tracer = t
+	}
+
+	engine, err := ethconfig.CreateConsensusEngine(config.Genesis.Config, config, chainDb, blockChainAPI, options.VmConfig.Tracer)
+	eth.engine = engine
+	if err != nil {
+		return nil, err
 	}
 
 	checker := whitelist.NewService(chainDb, config.DisableBlindForkValidation, config.MaxBlindForkValidationLimit)
