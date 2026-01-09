@@ -4244,7 +4244,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 		{
 			txHash: txHashes[0],
 			want: `{
-				"blockHash": "0x1728b788dfe51e507d25f14f01414b5a17f807953c13833811d2afae1982b53b",
+				"blockHash": "0xcdbefbd0a516759927751ca4c00084f967cef3817ce6e0fd819f0534b271cb4a",
 				"blockNumber": "0x1",
 				"contractAddress": null,
 				"cumulativeGasUsed": "0x5208",
@@ -4265,7 +4265,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 					"blockTimestamp": "0xa",
 					"transactionHash": "0x644a31c354391520d00e95b9affbbb010fc79ac268144ab8e28207f4cf51097e",
 					"transactionIndex": "0x0",
-					"blockHash": "0x1728b788dfe51e507d25f14f01414b5a17f807953c13833811d2afae1982b53b",
+					"blockHash": "0xcdbefbd0a516759927751ca4c00084f967cef3817ce6e0fd819f0534b271cb4a",
 					"logIndex": "0x0",
 					"removed": false
 				  }
@@ -4282,7 +4282,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 		{
 			txHash: txHashes[1],
 			want: `{
-				"blockHash": "0x1728b788dfe51e507d25f14f01414b5a17f807953c13833811d2afae1982b53b",
+				"blockHash": "0xcdbefbd0a516759927751ca4c00084f967cef3817ce6e0fd819f0534b271cb4a",
 				"blockNumber": "0x1",
 				"contractAddress": "0xae9bea628c4ce503dcfd7e305cab4e29e7476592",
 				"cumulativeGasUsed": "0x12156",
@@ -4302,7 +4302,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 		{
 			txHash: txHashes[2],
 			want: `{
-				"blockHash": "0x1728b788dfe51e507d25f14f01414b5a17f807953c13833811d2afae1982b53b",
+				"blockHash": "0xcdbefbd0a516759927751ca4c00084f967cef3817ce6e0fd819f0534b271cb4a",
 				"blockNumber": "0x1",
 				"contractAddress": null,
 				"cumulativeGasUsed": "0x17f7e",
@@ -4322,7 +4322,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 					"blockTimestamp": "0xa",
 					"transactionHash": "0xa228af0975b99799bd28331085a6966aba2fb5814a8d89aabc342462aa40429a",
 					"transactionIndex": "0x2",
-					"blockHash": "0x1728b788dfe51e507d25f14f01414b5a17f807953c13833811d2afae1982b53b",
+					"blockHash": "0xcdbefbd0a516759927751ca4c00084f967cef3817ce6e0fd819f0534b271cb4a",
 					"logIndex": "0x1",
 					"removed": false
 				  }
@@ -4339,7 +4339,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 		{
 			txHash: txHashes[3],
 			want: `{
-				"blockHash": "0x1728b788dfe51e507d25f14f01414b5a17f807953c13833811d2afae1982b53b",
+				"blockHash": "0xcdbefbd0a516759927751ca4c00084f967cef3817ce6e0fd819f0534b271cb4a",
 				"blockNumber": "0x1",
 				"contractAddress": null,
 				"cumulativeGasUsed": "0x1d30b",
@@ -4360,7 +4360,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 					"blockTimestamp": "0xa",
 					"transactionHash": "0xc2cc458a65bc96f642d4a2063cce162b0da642613d801271bdbc4aa7e775f3ed",
 					"transactionIndex": "0x3",
-					"blockHash": "0x1728b788dfe51e507d25f14f01414b5a17f807953c13833811d2afae1982b53b",
+					"blockHash": "0xcdbefbd0a516759927751ca4c00084f967cef3817ce6e0fd819f0534b271cb4a",
 					"logIndex": "0x2",
 					"removed": false
 				  }
@@ -4377,7 +4377,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 		{
 			txHash: txHashes[4],
 			want: `{
-				"blockHash": "0x1728b788dfe51e507d25f14f01414b5a17f807953c13833811d2afae1982b53b",
+				"blockHash": "0xcdbefbd0a516759927751ca4c00084f967cef3817ce6e0fd819f0534b271cb4a",
 				"blockNumber": "0x1",
 				"contractAddress": "0xfdaa97661a584d977b4d3abb5370766ff5b86a18",
 				"cumulativeGasUsed": "0x2b325",
@@ -4397,7 +4397,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 		{
 			txHash: txHashes[5],
 			want: `{
-				"blockHash": "0x1728b788dfe51e507d25f14f01414b5a17f807953c13833811d2afae1982b53b",
+				"blockHash": "0xcdbefbd0a516759927751ca4c00084f967cef3817ce6e0fd819f0534b271cb4a",
 				"blockNumber": "0x1",
 				"contractAddress": null,
 				"cumulativeGasUsed": "0x2b325",
@@ -4408,7 +4408,7 @@ func setupBlocksToApiTest(t *testing.T) (*BlockChainAPI, rpc.BlockNumberOrHash, 
 				"logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
 				"status": "0x1",
 				"to": "0x0000000000000000000000000000000000000000",
-				"transactionHash": "0xba46f68d5c3729ac3fb672fec579fc2cad543bc9edf5b2d47d7c6636ac2fbec9",
+				"transactionHash": "0xcd9b0d3d7c08df38f716a708b13e38cb286af42680feb37e6a34a1b4197231a3",
 				"transactionIndex": "0x5",
 				"type": "0x0"
 			  }`,
