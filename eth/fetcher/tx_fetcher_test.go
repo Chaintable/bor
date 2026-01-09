@@ -1766,6 +1766,7 @@ func TestTransactionFetcherFuzzCrash04(t *testing.T) {
 // This test ensures the blob transactions will be scheduled for fetching
 // once they are announced in the network.
 func TestBlobTransactionAnnounce(t *testing.T) {
+	t.Skip("bor: skipped blobs are not relevant to bor")
 	testTransactionFetcherParallel(t, txFetcherTest{
 		init: func() *TxFetcher {
 			return NewTxFetcher(
