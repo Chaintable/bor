@@ -1015,6 +1015,7 @@ func TestOpenHeap(t *testing.T) {
 // Tests that after the pool's previous state is loaded back, any transactions
 // over the new storage cap will get dropped.
 func TestOpenCap(t *testing.T) {
+	t.Skip("bor: skipping as blobpool is not used in bor")
 	//log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelTrace, true)))
 
 	// Create a temporary folder for the persistent backend

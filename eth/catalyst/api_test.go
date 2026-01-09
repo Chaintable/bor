@@ -2100,6 +2100,7 @@ func TestGetBlobsV1(t *testing.T) {
 }
 
 func TestGetBlobsV1AfterOsakaFork(t *testing.T) {
+	t.Skip("bor: not relevant as blobpool is not used in bor")
 	genesis := &core.Genesis{
 		Config:     params.MergedTestChainConfig,
 		Alloc:      types.GenesisAlloc{testAddr: {Balance: testBalance}},
