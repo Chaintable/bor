@@ -585,10 +585,10 @@ func (c *Command) Flags(config *Config) *flagset.Flagset {
 		Group:   "JsonRPC",
 	})
 	f.IntFlag(&flagset.IntFlag{
-		Name:     "rpc.logquerylimit",
-		Usage:    "Maximum number of alternative addresses or topics allowed per search position in eth_getLogs filter criteria (0 = no cap)",
-		Value:    &c.cliConfig.JsonRPC.LogQueryLimit,
-		Default:  c.cliConfig.JsonRPC.LogQueryLimit,
+		Name:    "rpc.logquerylimit",
+		Usage:   "Maximum number of alternative addresses or topics allowed per search position in eth_getLogs filter criteria (0 = no cap)",
+		Value:   &c.cliConfig.JsonRPC.LogQueryLimit,
+		Default: c.cliConfig.JsonRPC.LogQueryLimit,
 		Group:   "JsonRPC",
 	})
 	f.BoolFlag(&flagset.BoolFlag{
