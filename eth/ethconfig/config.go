@@ -198,6 +198,10 @@ type Config struct {
 	// send-transaction variants. The unit is ether.
 	RPCTxFeeCap float64
 
+	// RPCLogQueryLimit is the maximum number of addresses or topics allowed per search
+	// position in eth_getLogs filter criteria (0 = no cap)
+	RPCLogQueryLimit int
+
 	// URL to connect to Heimdall node
 	HeimdallURL string
 

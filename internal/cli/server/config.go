@@ -415,6 +415,9 @@ type JsonRPCConfig struct {
 	// TxFeeCap is the global transaction fee cap for send-transaction variants
 	TxFeeCap float64 `hcl:"txfeecap,optional" toml:"txfeecap,optional"`
 
+	// LogQueryLimit is the max number of addresses or topics allowed in filter criteria for eth_getLogs.
+	LogQueryLimit int `hcl:"logquerylimit,optional" toml:"logquerylimit,optional"`
+
 	// Http has the json-rpc http related settings
 	Http *APIConfig `hcl:"http,block" toml:"http,block"`
 
@@ -801,6 +804,7 @@ func DefaultConfig() *Config {
 			IPCPath:             "",
 			GasCap:              ethconfig.Defaults.RPCGasCap,
 			TxFeeCap:            ethconfig.Defaults.RPCTxFeeCap,
+			LogQueryLimit:       ethconfig.Defaults.RPCLogQueryLimit,
 			RPCEVMTimeout:       ethconfig.Defaults.RPCEVMTimeout,
 			AllowUnprotectedTxs: false,
 			EnablePersonal:      false,
@@ -1339,6 +1343,8 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 	n.RPCEVMTimeout = c.JsonRPC.RPCEVMTimeout
 
 	n.RPCTxFeeCap = c.JsonRPC.TxFeeCap
+
+	n.RPCLogQueryLimit = c.JsonRPC.LogQueryLimit
 
 	// Choose the sync mode. Only "full" or "stateless" sync is supported
 	switch c.SyncMode {
