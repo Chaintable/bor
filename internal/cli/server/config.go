@@ -847,7 +847,7 @@ func DefaultConfig() *Config {
 			IPCPath:              "",
 			GasCap:               ethconfig.Defaults.RPCGasCap,
 			TxFeeCap:             ethconfig.Defaults.RPCTxFeeCap,
-			LogQueryLimit:       ethconfig.Defaults.RPCLogQueryLimit,
+			LogQueryLimit:        ethconfig.Defaults.RPCLogQueryLimit,
 			RPCEVMTimeout:        ethconfig.Defaults.RPCEVMTimeout,
 			AllowUnprotectedTxs:  false,
 			EnablePersonal:       false,
