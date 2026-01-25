@@ -78,6 +78,7 @@ var Defaults = Config{
 	RPCEVMTimeout:         5 * time.Second,
 	GPO:                   FullNodeGPO,
 	RPCTxFeeCap:           1, // 1 ether
+	RPCLogQueryLimit:      1000,
 	FastForwardThreshold:  6400,
 	WitnessPruneThreshold: 64000,
 	WitnessPruneInterval:  120 * time.Second,
