@@ -1550,10 +1550,10 @@ func (c *ChainConfig) LatestFork(_ uint64) forks.Fork {
 	london := c.LondonBlock
 
 	switch {
-	case c.IsPrague(london):
-		return forks.Prague
 	case c.IsOsaka(london):
 		return forks.Osaka
+	case c.IsPrague(london):
+		return forks.Prague
 	case c.IsCancun(london):
 		return forks.Cancun
 	case c.IsShanghai(london):
