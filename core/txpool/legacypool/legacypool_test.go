@@ -188,7 +188,7 @@ func pricedSetCodeTx(nonce uint64, gaslimit uint64, gasFee, tip *uint256.Int, ke
 	var authList []types.SetCodeAuthorization
 	for _, u := range unsigned {
 		auth, _ := types.SignSetCode(u.key, types.SetCodeAuthorization{
-			ChainID: *uint256.MustFromBig(params.TestChainConfig.ChainID),
+			ChainID: *uint256.MustFromBig(params.MergedTestChainConfig.ChainID),
 			Address: common.Address{0x42},
 			Nonce:   u.nonce,
 		})
@@ -198,8 +198,8 @@ func pricedSetCodeTx(nonce uint64, gaslimit uint64, gasFee, tip *uint256.Int, ke
 }
 
 func pricedSetCodeTxWithAuth(nonce uint64, gaslimit uint64, gasFee, tip *uint256.Int, key *ecdsa.PrivateKey, authList []types.SetCodeAuthorization) *types.Transaction {
-	return types.MustSignNewTx(key, types.LatestSignerForChainID(params.TestChainConfig.ChainID), &types.SetCodeTx{
-		ChainID:    uint256.MustFromBig(params.TestChainConfig.ChainID),
+	return types.MustSignNewTx(key, types.LatestSignerForChainID(params.MergedTestChainConfig.ChainID), &types.SetCodeTx{
+		ChainID:    uint256.MustFromBig(params.MergedTestChainConfig.ChainID),
 		Nonce:      nonce,
 		GasTipCap:  tip,
 		GasFeeCap:  gasFee,
@@ -2883,7 +2883,7 @@ func TestSetCodeTransactionsReorg(t *testing.T) {
 	// Send an authorization for 0x42
 	var authList []types.SetCodeAuthorization
 	auth, _ := types.SignSetCode(keyA, types.SetCodeAuthorization{
-		ChainID: *uint256.MustFromBig(params.TestChainConfig.ChainID),
+		ChainID: *uint256.MustFromBig(params.MergedTestChainConfig.ChainID),
 		Address: common.Address{0x42},
 		Nonce:   0,
 	})
@@ -2897,7 +2897,7 @@ func TestSetCodeTransactionsReorg(t *testing.T) {
 	<-pool.requestReset(nil, nil)
 	// Set an authorization for 0x00
 	auth, _ = types.SignSetCode(keyA, types.SetCodeAuthorization{
-		ChainID: *uint256.MustFromBig(params.TestChainConfig.ChainID),
+		ChainID: *uint256.MustFromBig(params.MergedTestChainConfig.ChainID),
 		Address: common.Address{},
 		Nonce:   0,
 	})
