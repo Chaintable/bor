@@ -156,7 +156,11 @@ func (p *TxPool) loop(head *types.Header) {
 		newHeadCh  = make(chan core.ChainHeadEvent)
 		newHeadSub = p.chain.SubscribeChainHeadEvent(newHeadCh)
 	)
-	defer newHeadSub.Unsubscribe()
+	defer func() {
+		if newHeadSub != nil {
+			newHeadSub.Unsubscribe()
+		}
+	}()
 
 	// Track the previous and current head to feed to an idle reset
 	var (
