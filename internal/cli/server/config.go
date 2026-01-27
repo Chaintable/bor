@@ -64,6 +64,9 @@ type Config struct {
 	// Record information useful for VM and contract debugging
 	EnablePreimageRecording bool `hcl:"vmdebug,optional" toml:"vmdebug,optional"`
 
+	// Enable state size tracking
+	StateSizeTracking bool `hcl:"state.size-tracking,optional" toml:"state.size-tracking,optional"`
+
 	// DataDir is the directory to store the state in
 	DataDir string `hcl:"datadir,optional" toml:"datadir,optional"`
 
@@ -650,6 +653,9 @@ type CacheConfig struct {
 	TrieTimeout    time.Duration `hcl:"-,optional" toml:"-"`
 	TrieTimeoutRaw string        `hcl:"timeout,optional" toml:"timeout,optional"`
 
+	// Directory path to the journal used for persisting trie data across node restarts
+	TrieJournalDirectory string `hcl:"triejournaldirectory,optional" toml:"triejournaldirectory,optional"`
+
 	// Raise the open file descriptor resource limit (default = system fd limit)
 	FDLimit int `hcl:"fdlimit,optional" toml:"fdlimit,optional"`
 
@@ -744,6 +750,7 @@ func DefaultConfig() *Config {
 		Verbosity:                   3,
 		LogLevel:                    "",
 		EnablePreimageRecording:     false,
+		StateSizeTracking:           ethconfig.Defaults.EnableStateSizeTracking,
 		DataDir:                     DefaultDataDir(),
 		Ancient:                     "",
 		DBEngine:                    "pebble",
@@ -902,21 +909,22 @@ func DefaultConfig() *Config {
 			},
 		},
 		Cache: &CacheConfig{
-			Cache:              1024, // geth's default (suitable for mumbai)
-			PercDatabase:       50,
-			PercTrie:           15,
-			PercGc:             25,
-			PercSnapshot:       10,
-			NoPrefetch:         false,
-			Preimages:          false,
-			TxLookupLimit:      2350000,
-			TriesInMemory:      128,
-			FilterLogCacheSize: ethconfig.Defaults.FilterLogCacheSize,
-			TrieTimeout:        60 * time.Minute,
-			FDLimit:            0,
-			GoMemLimit:         "",  // Empty means no limit
-			GoGC:               100, // Go default is 100%
-			GoDebug:            "",  // Empty means no debug flags
+			Cache:                1024, // geth's default (suitable for mumbai)
+			PercDatabase:         50,
+			PercTrie:             15,
+			PercGc:               25,
+			PercSnapshot:         10,
+			NoPrefetch:           false,
+			Preimages:            false,
+			TxLookupLimit:        2350000,
+			TriesInMemory:        128,
+			FilterLogCacheSize:   ethconfig.Defaults.FilterLogCacheSize,
+			TrieTimeout:          60 * time.Minute,
+			TrieJournalDirectory: "", // Will be resolved to DATADIR/triedb in buildEth
+			FDLimit:              0,
+			GoMemLimit:           "",  // Empty means no limit
+			GoGC:                 100, // Go default is 100%
+			GoDebug:              "",  // Empty means no debug flags
 		},
 		ExtraDB: &ExtraDBConfig{
 			// These are LevelDB defaults, specifying here for clarity in code and in logging.
@@ -1137,6 +1145,7 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 	}
 
 	n.EnablePreimageRecording = c.EnablePreimageRecording
+	n.EnableStateSizeTracking = c.StateSizeTracking
 
 	// txpool options
 	{
