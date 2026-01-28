@@ -1164,7 +1164,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 			_, err = statefull.ApplyBorMessage(evm, callmsg)
 
 			if writer != nil {
-					_ = writer.Flush()
+				_ = writer.Flush()
 			}
 		} else if !(stateSyncPresent && i == len(txs)-1) {
 			statedb.SetTxContext(tx.Hash(), i)
