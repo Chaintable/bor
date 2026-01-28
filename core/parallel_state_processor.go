@@ -474,7 +474,7 @@ func VerifyDeps(deps map[int][]int) bool {
 	for i := 0; i <= n-1; i++ {
 		val := deps[i]
 		for _, depTx := range val {
-			if depTx >= n || depTx >= i {
+			if depTx < 0 || depTx >= n || depTx >= i {
 				return false
 			}
 		}
