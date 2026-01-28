@@ -221,7 +221,7 @@ func TestParallelBlockChainImport(t *testing.T) {
 
 func testParallelBlockChainImport(t *testing.T, scheme string, enforceParallelProcessor bool) {
 	db, _, blockchain, err := newCanonical(ethash.NewFaker(), 10, true, scheme)
-	blockchain.parallelProcessor = NewParallelStateProcessor(blockchain.chainConfig, blockchain, blockchain.engine)
+	blockchain.parallelProcessor = NewParallelStateProcessor(blockchain.hc, blockchain)
 
 	if err != nil {
 		t.Fatalf("failed to make new canonical chain: %v", err)
