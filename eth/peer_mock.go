@@ -7,7 +7,7 @@ package eth
 import (
 	reflect "reflect"
 
-	gomock "github.com/golang/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 
 	common "github.com/ethereum/go-ethereum/common"
 	stateless "github.com/ethereum/go-ethereum/core/stateless"

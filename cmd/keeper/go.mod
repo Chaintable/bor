@@ -3,15 +3,15 @@ module github.com/ethereum/go-ethereum/cmd/keeper
 go 1.25.6
 
 require (
+	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20260104020744-7268a54d0358
 	github.com/ethereum/go-ethereum v0.0.0-00010101000000-000000000000
-	github.com/zkMIPS/zkMIPS/crates/go-runtime/zkm_runtime v0.0.0-20250915074013-fbc07aa2c6f5
 )
 
 require (
 	github.com/0xPolygon/crand v1.0.3 // indirect
 	github.com/JekaMas/workerpool v1.1.8 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/VictoriaMetrics/fastcache v1.12.2 // indirect
+	github.com/VictoriaMetrics/fastcache v1.13.0 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/consensys/gnark-crypto v0.19.2 // indirect
@@ -48,13 +48,10 @@ require (
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace (
-	github.com/ethereum/go-ethereum => ../../
-	github.com/zkMIPS/zkMIPS/crates/go-runtime/zkm_runtime => github.com/weilzkm/zkMIPS/crates/go-runtime/zkvm_runtime v0.0.0-20250915074013-fbc07aa2c6f5
-)
+replace github.com/ethereum/go-ethereum => ../../
