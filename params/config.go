@@ -91,6 +91,7 @@ var (
 		GrayGlacierBlock:        nil,
 		TerminalTotalDifficulty: big.NewInt(0),
 		MergeNetsplitBlock:      nil,
+		DepositContractAddress:  common.HexToAddress("0x4242424242424242424242424242424242424242"),
 		Ethash:                  new(EthashConfig),
 	}
 	// SepoliaChainConfig contains the chain parameters to run a node on the Sepolia test network.
@@ -567,6 +568,7 @@ var (
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfig,
+			Osaka:  DefaultOsakaBlobConfig,
 		},
 		Bor: &BorConfig{
 			BurntContract: map[string]string{"0": "0x000000000000000000000000000000000000dead"},
@@ -676,8 +678,9 @@ var (
 
 	// MergedTestChainConfig contains every protocol change (EIPs) introduced
 	// and accepted by the Ethereum core developers for testing purposes.
+	// Includes all Bor hard forks enabled at block 0.
 	MergedTestChainConfig = &ChainConfig{
-		ChainID:                 big.NewInt(1),
+		ChainID:                 big.NewInt(1337),
 		HomesteadBlock:          big.NewInt(0),
 		DAOForkBlock:            nil,
 		DAOForkSupport:          false,
@@ -708,10 +711,24 @@ var (
 			Osaka:  DefaultOsakaBlobConfig,
 		},
 		Bor: &BorConfig{
-			Sprint: map[string]uint64{
-				"0": 4},
-			BurntContract: map[string]string{"0": "0x000000000000000000000000000000000000dead"},
-			Period:        map[string]uint64{"0": 2},
+			Sprint:                map[string]uint64{"0": 4},
+			Period:                map[string]uint64{"0": 2},
+			ProducerDelay:         map[string]uint64{"0": 1},
+			BackupMultiplier:      map[string]uint64{"0": 2},
+			ValidatorContract:     "0x0000000000000000000000000000000000001000",
+			StateReceiverContract: "0x0000000000000000000000000000000000001001",
+			BurntContract:         map[string]string{"0": "0x000000000000000000000000000000000000dead"},
+			BlockAlloc:            map[string]interface{}{},
+			// Bor hard forks
+			JaipurBlock:       big.NewInt(0),
+			DelhiBlock:        big.NewInt(0),
+			IndoreBlock:       big.NewInt(0),
+			AhmedabadBlock:    big.NewInt(0),
+			BhilaiBlock:       big.NewInt(0),
+			RioBlock:          big.NewInt(0),
+			MadhugiriBlock:    big.NewInt(0),
+			MadhugiriProBlock: big.NewInt(0),
+			DandeliBlock:      big.NewInt(0),
 		},
 	}
 
@@ -1114,41 +1131,34 @@ func (c *ChainConfig) Description() string {
 	// makes sense for mainnet should be optional at printing to avoid bloating
 	// the output for testnets and private networks.
 	banner += "Pre-Merge hard forks (block based):\n"
-	banner += fmt.Sprintf(" - Homestead:                   #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/homestead.md)\n", c.HomesteadBlock)
-
+	banner += fmt.Sprintf(" - Homestead:                   #%-8v\n", c.HomesteadBlock)
 	if c.DAOForkBlock != nil {
-		banner += fmt.Sprintf(" - DAO Fork:                    #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/dao-fork.md)\n", c.DAOForkBlock)
+		banner += fmt.Sprintf(" - DAO Fork:                    #%-8v\n", c.DAOForkBlock)
 	}
-
-	banner += fmt.Sprintf(" - Tangerine Whistle (EIP 150): #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/tangerine-whistle.md)\n", c.EIP150Block)
-	banner += fmt.Sprintf(" - Spurious Dragon/1 (EIP 155): #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/spurious-dragon.md)\n", c.EIP155Block)
-	banner += fmt.Sprintf(" - Spurious Dragon/2 (EIP 158): #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/spurious-dragon.md)\n", c.EIP155Block)
-	banner += fmt.Sprintf(" - Byzantium:                   #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/byzantium.md)\n", c.ByzantiumBlock)
-	banner += fmt.Sprintf(" - Constantinople:              #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/constantinople.md)\n", c.ConstantinopleBlock)
-	banner += fmt.Sprintf(" - Petersburg:                  #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/petersburg.md)\n", c.PetersburgBlock)
-	banner += fmt.Sprintf(" - Istanbul:                    #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/istanbul.md)\n", c.IstanbulBlock)
-
+	banner += fmt.Sprintf(" - Tangerine Whistle (EIP 150): #%-8v\n", c.EIP150Block)
+	banner += fmt.Sprintf(" - Spurious Dragon/1 (EIP 155): #%-8v\n", c.EIP155Block)
+	banner += fmt.Sprintf(" - Spurious Dragon/2 (EIP 158): #%-8v\n", c.EIP158Block)
+	banner += fmt.Sprintf(" - Byzantium:                   #%-8v\n", c.ByzantiumBlock)
+	banner += fmt.Sprintf(" - Constantinople:              #%-8v\n", c.ConstantinopleBlock)
+	banner += fmt.Sprintf(" - Petersburg:                  #%-8v\n", c.PetersburgBlock)
+	banner += fmt.Sprintf(" - Istanbul:                    #%-8v\n", c.IstanbulBlock)
 	if c.MuirGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Muir Glacier:                #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/muir-glacier.md)\n", c.MuirGlacierBlock)
+		banner += fmt.Sprintf(" - Muir Glacier:                #%-8v\n", c.MuirGlacierBlock)
 	}
-
-	banner += fmt.Sprintf(" - Berlin:                      #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/berlin.md)\n", c.BerlinBlock)
-	banner += fmt.Sprintf(" - London:                      #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/london.md)\n", c.LondonBlock)
-
+	banner += fmt.Sprintf(" - Berlin:                      #%-8v\n", c.BerlinBlock)
+	banner += fmt.Sprintf(" - London:                      #%-8v\n", c.LondonBlock)
 	if c.ArrowGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Arrow Glacier:               #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/arrow-glacier.md)\n", c.ArrowGlacierBlock)
+		banner += fmt.Sprintf(" - Arrow Glacier:               #%-8v\n", c.ArrowGlacierBlock)
 	}
 
 	if c.GrayGlacierBlock != nil {
-		banner += fmt.Sprintf(" - Gray Glacier:                #%-8v (https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/gray-glacier.md)\n", c.GrayGlacierBlock)
+		banner += fmt.Sprintf(" - Gray Glacier:                #%-8v\n", c.GrayGlacierBlock)
 	}
 
 	banner += "\n"
 
 	// Add a special section for the merge as it's non-obvious
 	banner += "Merge configured:\n"
-	banner += " - Hard-fork specification:    https://github.com/ethereum/execution-specs/blob/master/network-upgrades/mainnet-upgrades/paris.md\n"
-	banner += " - Network known to be merged\n"
 	banner += fmt.Sprintf(" - Total terminal difficulty:  %v\n", c.TerminalTotalDifficulty)
 	if c.MergeNetsplitBlock != nil {
 		banner += fmt.Sprintf(" - Merge netsplit block:       #%-8v\n", c.MergeNetsplitBlock)
@@ -1174,6 +1184,7 @@ func (c *ChainConfig) Description() string {
 	if c.OsakaBlock != nil {
 		banner += fmt.Sprintf(" - Osaka:                      #%-8v\n", *c.OsakaBlock)
 	}
+	banner += fmt.Sprintf("\nAll fork specifications can be found at https://ethereum.github.io/execution-specs/src/ethereum/forks/\n")
 	return banner
 }
 
@@ -1182,6 +1193,14 @@ type BlobConfig struct {
 	Target         int    `json:"target"`
 	Max            int    `json:"max"`
 	UpdateFraction uint64 `json:"baseFeeUpdateFraction"`
+}
+
+// String implement fmt.Stringer, returning string format blob config.
+func (bc *BlobConfig) String() string {
+	if bc == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("target: %d, max: %d, fraction: %d", bc.Target, bc.Max, bc.UpdateFraction)
 }
 
 // BlobScheduleConfig determines target and max number of blobs allow per fork.
@@ -1271,6 +1290,17 @@ func (c *ChainConfig) IsTerminalPoWBlock(parentTotalDiff *big.Int, totalDiff *bi
 	}
 
 	return parentTotalDiff.Cmp(c.TerminalTotalDifficulty) < 0 && totalDiff.Cmp(c.TerminalTotalDifficulty) >= 0
+}
+
+// IsPostMerge reports whether the given block number is assumed to be post-merge.
+// Here we check the MergeNetsplitBlock to allow configuring networks with a PoW or
+// PoA chain for unit testing purposes.
+// Note that this is not needed in bor: only used in simulate.go
+func (c *ChainConfig) IsPostMerge(blockNum uint64, _ uint64) bool {
+	mergedAtGenesis := c.TerminalTotalDifficulty != nil && c.TerminalTotalDifficulty.Sign() == 0
+	return mergedAtGenesis ||
+		c.MergeNetsplitBlock != nil && blockNum >= c.MergeNetsplitBlock.Uint64() ||
+		c.ShanghaiBlock != nil && blockNum >= c.ShanghaiBlock.Uint64()
 }
 
 // IsShanghai returns whether num is either equal to the Shanghai fork block or greater.
@@ -1546,7 +1576,6 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkBlockIncompatible(c.OsakaBlock, newcfg.OsakaBlock, headNumber) {
 		return newBlockCompatError("Osaka fork block", c.OsakaBlock, newcfg.OsakaBlock)
 	}
-
 	return nil
 }
 
@@ -1561,15 +1590,15 @@ func (c *ChainConfig) ElasticityMultiplier() uint64 {
 }
 
 // LatestFork returns the latest time-based fork that would be active for the given time.
-func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
+func (c *ChainConfig) LatestFork(_ uint64) forks.Fork {
 	// Assume last non-time-based fork has passed.
 	london := c.LondonBlock
 
 	switch {
-	case c.IsPrague(london):
-		return forks.Prague
 	case c.IsOsaka(london):
 		return forks.Osaka
+	case c.IsPrague(london):
+		return forks.Prague
 	case c.IsCancun(london):
 		return forks.Cancun
 	case c.IsShanghai(london):
@@ -1579,24 +1608,56 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	}
 }
 
-/*
-// Timestamp returns the timestamp associated with the fork or returns nil if
-// the fork isn't defined or isn't a time-based fork.
-func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
-	switch {
-	case fork == forks.Osaka:
-		return c.OsakaTime
-	case fork == forks.Prague:
-		return c.PragueTime
-	case fork == forks.Cancun:
-		return c.CancunTime
-	case fork == forks.Shanghai:
-		return c.ShanghaiTime
+// BlobConfig returns the blob config associated with the provided fork.
+func (c *ChainConfig) BlobConfig(fork forks.Fork) *BlobConfig {
+	switch fork {
+	case forks.Osaka:
+		return c.BlobScheduleConfig.Osaka
+	case forks.Prague:
+		return c.BlobScheduleConfig.Prague
+	case forks.Cancun:
+		return c.BlobScheduleConfig.Cancun
 	default:
 		return nil
 	}
 }
-*/
+
+// ActiveSystemContracts returns the currently active system contracts at the
+// given timestamp.
+func (c *ChainConfig) ActiveSystemContracts(time uint64) map[string]common.Address {
+	fork := c.LatestFork(time)
+	active := make(map[string]common.Address)
+	if fork >= forks.Osaka {
+		// no new system contracts
+	}
+	if fork >= forks.Prague {
+		active["CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS"] = ConsolidationQueueAddress
+		active["DEPOSIT_CONTRACT_ADDRESS"] = c.DepositContractAddress
+		active["HISTORY_STORAGE_ADDRESS"] = HistoryStorageAddress
+		active["WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS"] = WithdrawalQueueAddress
+	}
+	if fork >= forks.Cancun {
+		active["BEACON_ROOTS_ADDRESS"] = BeaconRootsAddress
+	}
+	return active
+}
+
+// Block returns the Block associated with the fork or returns nil if
+// the fork isn't defined
+func (c *ChainConfig) Block(fork forks.Fork) *big.Int {
+	switch {
+	case fork == forks.Osaka:
+		return c.OsakaBlock
+	case fork == forks.Prague:
+		return c.PragueBlock
+	case fork == forks.Cancun:
+		return c.CancunBlock
+	case fork == forks.Shanghai:
+		return c.ShanghaiBlock
+	default:
+		return nil
+	}
+}
 
 // isForkBlockIncompatible returns true if a fork scheduled at block s1 cannot be
 // rescheduled to block s2 because head is already past the fork.
@@ -1605,8 +1666,7 @@ func isForkBlockIncompatible(s1, s2, head *big.Int) bool {
 }
 
 // isBlockForked returns whether a fork scheduled at block s is active at the
-// given head block. Whilst this method is the same as isTimestampForked, they
-// are explicitly separate for clearer reading.
+// given head block.
 func isBlockForked(s, head *big.Int) bool {
 	if s == nil || head == nil {
 		return false
@@ -1703,7 +1763,7 @@ type Rules struct {
 }
 
 // Rules ensures c's ChainID is not nil.
-func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules {
+func (c *ChainConfig) Rules(num *big.Int, isMerge bool, _ uint64) Rules {
 	chainID := c.ChainID
 	if chainID == nil {
 		chainID = new(big.Int)

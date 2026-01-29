@@ -57,28 +57,34 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the Ethereum main net.
 var Defaults = Config{
-	SyncMode:             downloader.SnapSync,
-	HistoryMode:          history.KeepAll,
-	NetworkId:            0, // enable auto configuration of networkID == chainID
-	TxLookupLimit:        2350000,
-	TransactionHistory:   2350000, // Note: used in bor cli
-	LogHistory:           2350000, // Note: used in bor cli
-	StateHistory:         params.FullImmutabilityThreshold,
-	DatabaseCache:        512,
-	TrieCleanCache:       154,
-	TrieDirtyCache:       256,
-	TrieTimeout:          60 * time.Minute,
-	SnapshotCache:        102,
-	FilterLogCacheSize:   32,
-	Miner:                miner.DefaultConfig,
-	TxPool:               legacypool.DefaultConfig,
-	BlobPool:             blobpool.DefaultConfig,
-	RPCGasCap:            50000000,
-	RPCEVMTimeout:        5 * time.Second,
-	GPO:                  FullNodeGPO,
-	RPCTxFeeCap:          1, // 1 ether
-	FastForwardThreshold: 6400,
-	WitnessAPIEnabled:    false,
+	SyncMode:              downloader.SnapSync,
+	HistoryMode:           history.KeepAll,
+	NetworkId:             0, // enable auto configuration of networkID == chainID
+	TxLookupLimit:         2350000,
+	TransactionHistory:    2350000, // Note: used in bor cli
+	LogHistory:            2350000, // Note: used in bor cli
+	StateHistory:          params.FullImmutabilityThreshold,
+	DatabaseCache:         512,
+	TrieCleanCache:        154,
+	TrieDirtyCache:        256,
+	TrieTimeout:           60 * time.Minute,
+	SnapshotCache:         102,
+	FilterLogCacheSize:    32,
+	LogQueryLimit:         1000,
+	Miner:                 miner.DefaultConfig,
+	TxPool:                legacypool.DefaultConfig,
+	BlobPool:              blobpool.DefaultConfig,
+	RPCGasCap:             50000000,
+	RPCEVMTimeout:         5 * time.Second,
+	GPO:                   FullNodeGPO,
+	RPCTxFeeCap:           1, // 1 ether
+	RPCLogQueryLimit:      1000,
+	FastForwardThreshold:  6400,
+	WitnessPruneThreshold: 64000,
+	WitnessPruneInterval:  120 * time.Second,
+	WitnessAPIEnabled:     false,
+	TxSyncDefaultTimeout:  20 * time.Second,
+	TxSyncMaxTimeout:      1 * time.Minute,
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -148,6 +154,10 @@ type Config struct {
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int
 
+	// This is the maximum number of addresses or topics allowed in filter criteria
+	// for eth_getLogs.
+	LogQueryLimit int
+
 	// Address-specific cache sizes for biased caching (pathdb only)
 	// Maps account address to cache size in bytes
 	AddressCacheSizes map[common.Address]int
@@ -165,6 +175,15 @@ type Config struct {
 	// Enables tracking of SHA3 preimages in the VM
 	EnablePreimageRecording bool
 
+	// Enables collection of witness trie access statistics
+	EnableWitnessStats bool
+
+	// Generate execution witnesses and self-check against them (testing purpose)
+	StatelessSelfValidation bool
+
+	// Enables tracking of state size
+	EnableStateSizeTracking bool
+
 	// Enables VM tracing
 	VMTrace           string
 	VMTraceJsonConfig string
@@ -178,12 +197,13 @@ type Config struct {
 	// RPCEVMTimeout is the global timeout for eth-call.
 	RPCEVMTimeout time.Duration
 
-	// RPCTxFeeCap is the global transaction fee(price * gaslimit) cap for
+	// RPCTxFeeCap is the global transaction fee (price * gas limit) cap for
 	// send-transaction variants. The unit is ether.
 	RPCTxFeeCap float64
 
-	// OverridePrague (TODO: remove after the fork)
-	OverridePrague *big.Int `toml:",omitempty"`
+	// RPCLogQueryLimit is the maximum number of addresses or topics allowed per search
+	// position in eth_getLogs filter criteria (0 = no cap)
+	RPCLogQueryLimit int
 
 	// URL to connect to Heimdall node
 	HeimdallURL string
@@ -264,6 +284,10 @@ type Config struct {
 
 	// MaxBlindForkValidationLimit denotes the maximum number of blocks to traverse back in the database when validating blind forks
 	MaxBlindForkValidationLimit uint64
+
+	// EIP-7966: eth_sendRawTransactionSync timeouts
+	TxSyncDefaultTimeout time.Duration `toml:",omitempty"`
+	TxSyncMaxTimeout     time.Duration `toml:",omitempty"`
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain configuration.

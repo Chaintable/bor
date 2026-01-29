@@ -64,6 +64,9 @@ type Config struct {
 	// Record information useful for VM and contract debugging
 	EnablePreimageRecording bool `hcl:"vmdebug,optional" toml:"vmdebug,optional"`
 
+	// Enable state size tracking
+	StateSizeTracking bool `hcl:"state.size-tracking,optional" toml:"state.size-tracking,optional"`
+
 	// DataDir is the directory to store the state in
 	DataDir string `hcl:"datadir,optional" toml:"datadir,optional"`
 
@@ -442,6 +445,9 @@ type JsonRPCConfig struct {
 	// TxFeeCap is the global transaction fee cap for send-transaction variants
 	TxFeeCap float64 `hcl:"txfeecap,optional" toml:"txfeecap,optional"`
 
+	// LogQueryLimit is the max number of addresses or topics allowed in filter criteria for eth_getLogs.
+	LogQueryLimit int `hcl:"logquerylimit,optional" toml:"logquerylimit,optional"`
+
 	// Http has the json-rpc http related settings
 	Http *APIConfig `hcl:"http,block" toml:"http,block"`
 
@@ -460,6 +466,14 @@ type JsonRPCConfig struct {
 
 	// EnablePersonal enables the deprecated personal namespace.
 	EnablePersonal bool `hcl:"enabledeprecatedpersonal,optional" toml:"enabledeprecatedpersonal,optional"`
+
+	// Default timeout for eth_sendRawTransactionSync (e.g. 2s, 500ms)
+	TxSyncDefaultTimeout    time.Duration `hcl:"-,optional" toml:"-"`
+	TxSyncDefaultTimeoutRaw string        `hcl:"txsync.defaulttimeout,optional" toml:"txsync.defaulttimeout,optional"`
+
+	// Maximum allowed timeout for eth_sendRawTransactionSync (e.g. 5m)
+	TxSyncMaxTimeout    time.Duration `hcl:"-,optional" toml:"-"`
+	TxSyncMaxTimeoutRaw string        `hcl:"txsync.maxtimeout,optional" toml:"txsync.maxtimeout,optional"`
 }
 
 type AUTHConfig struct {
@@ -653,6 +667,9 @@ type CacheConfig struct {
 	TrieTimeout    time.Duration `hcl:"-,optional" toml:"-"`
 	TrieTimeoutRaw string        `hcl:"timeout,optional" toml:"timeout,optional"`
 
+	// Directory path to the journal used for persisting trie data across node restarts
+	TrieJournalDirectory string `hcl:"triejournaldirectory,optional" toml:"triejournaldirectory,optional"`
+
 	// Raise the open file descriptor resource limit (default = system fd limit)
 	FDLimit int `hcl:"fdlimit,optional" toml:"fdlimit,optional"`
 
@@ -747,6 +764,7 @@ func DefaultConfig() *Config {
 		Verbosity:                   3,
 		LogLevel:                    "",
 		EnablePreimageRecording:     false,
+		StateSizeTracking:           ethconfig.Defaults.EnableStateSizeTracking,
 		DataDir:                     DefaultDataDir(),
 		Ancient:                     "",
 		DBEngine:                    "pebble",
@@ -840,13 +858,16 @@ func DefaultConfig() *Config {
 			IgnorePrice:      gasprice.DefaultIgnorePrice, // bor's default
 		},
 		JsonRPC: &JsonRPCConfig{
-			IPCDisable:          false,
-			IPCPath:             "",
-			GasCap:              ethconfig.Defaults.RPCGasCap,
-			TxFeeCap:            ethconfig.Defaults.RPCTxFeeCap,
-			RPCEVMTimeout:       ethconfig.Defaults.RPCEVMTimeout,
-			AllowUnprotectedTxs: false,
-			EnablePersonal:      false,
+			IPCDisable:           false,
+			IPCPath:              "",
+			GasCap:               ethconfig.Defaults.RPCGasCap,
+			TxFeeCap:             ethconfig.Defaults.RPCTxFeeCap,
+			LogQueryLimit:        ethconfig.Defaults.RPCLogQueryLimit,
+			RPCEVMTimeout:        ethconfig.Defaults.RPCEVMTimeout,
+			AllowUnprotectedTxs:  false,
+			EnablePersonal:       false,
+			TxSyncDefaultTimeout: ethconfig.Defaults.TxSyncDefaultTimeout,
+			TxSyncMaxTimeout:     ethconfig.Defaults.TxSyncMaxTimeout,
 			Http: &APIConfig{
 				Enabled:                     false,
 				Port:                        8545,
@@ -906,21 +927,22 @@ func DefaultConfig() *Config {
 			},
 		},
 		Cache: &CacheConfig{
-			Cache:              1024, // geth's default (suitable for mumbai)
-			PercDatabase:       50,
-			PercTrie:           15,
-			PercGc:             25,
-			PercSnapshot:       10,
-			NoPrefetch:         false,
-			Preimages:          false,
-			TxLookupLimit:      2350000,
-			TriesInMemory:      128,
-			FilterLogCacheSize: ethconfig.Defaults.FilterLogCacheSize,
-			TrieTimeout:        60 * time.Minute,
-			FDLimit:            0,
-			GoMemLimit:         "",  // Empty means no limit
-			GoGC:               100, // Go default is 100%
-			GoDebug:            "",  // Empty means no debug flags
+			Cache:                1024, // geth's default (suitable for mumbai)
+			PercDatabase:         50,
+			PercTrie:             15,
+			PercGc:               25,
+			PercSnapshot:         10,
+			NoPrefetch:           false,
+			Preimages:            false,
+			TxLookupLimit:        2350000,
+			TriesInMemory:        128,
+			FilterLogCacheSize:   ethconfig.Defaults.FilterLogCacheSize,
+			TrieTimeout:          60 * time.Minute,
+			TrieJournalDirectory: "", // Will be resolved to DATADIR/triedb in buildEth
+			FDLimit:              0,
+			GoMemLimit:           "",  // Empty means no limit
+			GoGC:                 100, // Go default is 100%
+			GoDebug:              "",  // Empty means no debug flags
 		},
 		ExtraDB: &ExtraDBConfig{
 			// These are LevelDB defaults, specifying here for clarity in code and in logging.
@@ -1039,6 +1061,8 @@ func (c *Config) fillTimeDurations() error {
 		{"txpool.rebroadcast-max-age", &c.TxPool.RebroadcastMaxAge, &c.TxPool.RebroadcastMaxAgeRaw},
 		{"cache.timeout", &c.Cache.TrieTimeout, &c.Cache.TrieTimeoutRaw},
 		{"p2p.txarrivalwait", &c.P2P.TxArrivalWait, &c.P2P.TxArrivalWaitRaw},
+		{"rpc.txsync.defaulttimeout", &c.JsonRPC.TxSyncDefaultTimeout, &c.JsonRPC.TxSyncDefaultTimeoutRaw},
+		{"rpc.txsync.maxtimeout", &c.JsonRPC.TxSyncMaxTimeout, &c.JsonRPC.TxSyncMaxTimeoutRaw},
 	}
 
 	for _, x := range tds {
@@ -1141,6 +1165,7 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 	}
 
 	n.EnablePreimageRecording = c.EnablePreimageRecording
+	n.EnableStateSizeTracking = c.StateSizeTracking
 
 	// txpool options
 	{
@@ -1438,8 +1463,11 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 	}
 
 	n.RPCEVMTimeout = c.JsonRPC.RPCEVMTimeout
-
 	n.RPCTxFeeCap = c.JsonRPC.TxFeeCap
+	n.TxSyncDefaultTimeout = c.JsonRPC.TxSyncDefaultTimeout
+	n.TxSyncMaxTimeout = c.JsonRPC.TxSyncMaxTimeout
+
+	n.RPCLogQueryLimit = c.JsonRPC.LogQueryLimit
 
 	// Choose the sync mode. Only "full" or "stateless" sync is supported
 	switch c.SyncMode {

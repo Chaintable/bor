@@ -21,9 +21,11 @@ import (
 	"math"
 	"math/big"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/holiman/uint256"
 	"gotest.tools/assert"
 )
 
@@ -629,6 +631,149 @@ func TestCalculateCoinbase(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestBlockAlloc_NoPrecisionLoss makes sure that
+// the current BlockAlloc balances (updated at Oct 22, 2025) fit in 256 bits
+// and do not change numerically when moving from Uint64() to MustFromBig.
+func TestBlockAlloc_NoPrecisionLoss(t *testing.T) {
+	blockAllocs := currentBlockAllocs()
+	maxU64 := new(big.Int).SetUint64(^uint64(0))
+
+	for network, baBlock := range blockAllocs {
+		for blockNum, alloc := range baBlock {
+			for addr, account := range alloc {
+				acct, ok := account.(map[string]interface{})
+				if !ok {
+					t.Fatalf("[%s @ %s] addr %s: unexpected account type %T", network, blockNum, addr, account)
+				}
+				rawBal, ok := acct["balance"]
+				if !ok {
+					t.Fatalf("[%s @ %s] addr %s: missing balance", network, blockNum, addr)
+				}
+				bal, err := parseBalance(rawBal)
+				if err != nil {
+					t.Fatalf("[%s @ %s] addr %s: parse balance error: %v", network, blockNum, addr, err)
+				}
+				// 256-bit fit check
+				if bal.BitLen() > 256 {
+					t.Fatalf("[%s @ %s] addr %s: balance bitlen=%d exceeds 256 bits",
+						network, blockNum, addr, bal.BitLen())
+				}
+				// Compare NewInt(bal.Uint64()) and uint256.FromBig(bal)
+				oldValue := uint256.NewInt(bal.Uint64())
+				newValue, overflow := uint256.FromBig(bal)
+				if overflow {
+					t.Fatalf("[%s @ %s] addr %s: overflow converting to uint256", network, blockNum, addr)
+				}
+				if newValue.Cmp(oldValue) != 0 {
+					// bock alloc balance truncated (bal > MaxUint64)
+					t.Fatalf("[%s @ %s] addr %s: precision loss (balance %s > MaxUint64)",
+						network, blockNum, addr, bal.String())
+				}
+				// same numeric conditions
+				if bal.Cmp(maxU64) > 0 {
+					t.Fatalf("[%s @ %s] addr %s: balance %s > MaxUint64 (would truncate)",
+						network, blockNum, addr, bal.String())
+				}
+			}
+		}
+	}
+}
+
+// parseBalance converts a 0x-value from blockAlloc's balance into *big.Int.
+func parseBalance(v interface{}) (*big.Int, error) {
+	switch x := v.(type) {
+	case string:
+		s := strings.TrimSpace(x)
+		if s == "" {
+			return nil, fmt.Errorf("empty balance string")
+		}
+		z := new(big.Int)
+		if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+			if _, ok := z.SetString(s[2:], 16); !ok {
+				return nil, fmt.Errorf("invalid hex balance: %q", s)
+			}
+			return z, nil
+		} else {
+			return nil, fmt.Errorf("unsupported balance type %T (%v)", v, v)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported balance type %T (%v)", v, v)
+	}
+}
+
+// currentBlockAllocs returns the allocs pasted from config.go.
+func currentBlockAllocs() map[string]map[string]map[string]interface{} {
+	return map[string]map[string]map[string]interface{}{
+		// Mumbai
+		"mumbai": {
+			"22244000": {
+				"0000000000000000000000000000000000001010": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+			},
+			"41874000": {
+				"0x0000000000000000000000000000000000001001": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+			},
+		},
+		// Amoy
+		"amoy": {
+			"11865856": {
+				"0000000000000000000000000000000000001001": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+				"0000000000000000000000000000000000001010": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+				"360ad4f9a9A8EFe9A8DCB5f461c4Cc1047E1Dcf9": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+			},
+			"12121856": {
+				"360ad4f9a9A8EFe9A8DCB5f461c4Cc1047E1Dcf9": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+			},
+		},
+		// Mainnet
+		"mainnet": {
+			"22156660": {
+				"0000000000000000000000000000000000001010": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+			},
+			"50523000": {
+				"0x0000000000000000000000000000000000001001": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+			},
+			"62278656": {
+				"0000000000000000000000000000000000001001": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+				"0000000000000000000000000000000000001010": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+				"0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270": map[string]interface{}{
+					"balance": "0x0",
+					"code":    "...",
+				},
+			},
+		},
+	}
 }
 
 func TestGetTargetGasPercentage(t *testing.T) {

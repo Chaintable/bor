@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert" // import path where ethPeer lives
+	"go.uber.org/mock/gomock"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -17,8 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert" // import path where ethPeer lives
 )
 
 func TestRequestWitnesses_NoWitPeer(t *testing.T) {
@@ -157,7 +158,7 @@ func TestRequestWitnesses_Controlling_Max_Concurrent_Calls(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, req, "expected a non-nil *eth.Request shim when witPeer is set")
 	assert.NotNil(t, response, "expected a non-nil *eth.Response shim when witPeer is set")
-	assert.Equal(t, 5, maxConcurrentCount, "must reach the maximum of the concurrent cound")
+	assert.Equal(t, 5, maxConcurrentCount, "must reach the maximum of the concurrent count")
 }
 
 // FillWitnessWithDeterministicRandomState repeatedly generates and adds random code blocks
@@ -186,8 +187,9 @@ func FillWitnessWithDeterministicRandomState(w *stateless.Witness, targetSize in
 		}
 
 		// add to witness
-		states := make(map[string]struct{})
-		states[string(buf)] = struct{}{}
+		states := map[string][]byte{
+			string(buf): buf,
+		}
 		w.AddState(states)
 		total += chunkSize
 	}

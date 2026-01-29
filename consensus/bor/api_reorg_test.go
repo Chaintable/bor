@@ -93,11 +93,10 @@ func (c *rawdbChain) GetHeaderByNumber(number uint64) *types.Header {
 }
 
 func (c *rawdbChain) GetHeaderByHash(hash common.Hash) *types.Header {
-	number := rawdb.ReadHeaderNumber(c.db, hash)
-	if number == nil {
-		return nil
+	if number, ok := rawdb.ReadHeaderNumber(c.db, hash); ok {
+		return rawdb.ReadHeader(c.db, hash, number)
 	}
-	return rawdb.ReadHeader(c.db, hash, *number)
+	return nil
 }
 
 func (c *rawdbChain) GetTd(hash common.Hash, number uint64) *big.Int {

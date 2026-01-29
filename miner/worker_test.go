@@ -25,6 +25,11 @@ import (
 	"time"
 
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
+	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
+	gomock "go.uber.org/mock/gomock"
+	"gotest.tools/assert"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -46,10 +51,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/tests/bor/mocks"
 	"github.com/ethereum/go-ethereum/triedb"
-	"github.com/holiman/uint256"
-	"github.com/stretchr/testify/require"
-	gomock "go.uber.org/mock/gomock"
-	"gotest.tools/assert"
 
 	"github.com/ethereum/go-ethereum/consensus/bor/heimdall/milestone"
 	borSpan "github.com/ethereum/go-ethereum/consensus/bor/heimdall/span"

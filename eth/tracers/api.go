@@ -30,6 +30,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -49,7 +51,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/holiman/uint256"
 )
 
 const (
@@ -94,6 +95,7 @@ var allowIOTracing = false // Change this to true to enable IO tracing for debug
 type Backend interface {
 	HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error)
 	HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Header, error)
+	CurrentHeader() *types.Header
 	BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error)
 	BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Block, error)
 	GetCanonicalTransaction(txHash common.Hash) (bool, *types.Transaction, common.Hash, uint64, uint64)
@@ -1120,33 +1122,39 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 	}
 	for i, tx := range txs {
 		// Prepare the transaction for un-traced execution
-		var (
-			msg, _ = core.TransactionToMessage(tx, signer, block.BaseFee())
-			vmConf vm.Config
-			dump   *os.File
-			writer *bufio.Writer
-			err    error
-		)
-		// If the transaction needs tracing, swap out the configs
-		if tx.Hash() == txHash || txHash == (common.Hash{}) || txHash == stateSyncHash {
-			// Generate a unique temporary file to dump it into
-			prefix := fmt.Sprintf("block_%#x-%d-%#x-", block.Hash().Bytes()[:4], i, tx.Hash().Bytes()[:4])
-			if !canon {
-				prefix = fmt.Sprintf("%valt-", prefix)
-			}
-			dump, err = os.CreateTemp(os.TempDir(), prefix)
+		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
+		if txHash != (common.Hash{}) && tx.Hash() != txHash && txHash != stateSyncHash {
+			// Process the tx to update state, but don't trace it.
+			_, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit), nil)
 			if err != nil {
-				return nil, err
+				return dumps, err
 			}
-			dumps = append(dumps, dump.Name())
-
-			// Swap out the noop logger to the standard tracer
-			writer = bufio.NewWriter(dump)
-			vmConf = vm.Config{
-				Tracer:                  logger.NewJSONLogger(&logConfig, writer),
-				EnablePreimageRecording: true,
-			}
+			// Finalize the state so any modifications are written to the trie
+			// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
+			statedb.Finalise(evm.ChainConfig().IsEIP158(block.Number()))
+			continue
 		}
+		// The transaction should be traced.
+		// Generate a unique temporary file to dump it into.
+		prefix := fmt.Sprintf("block_%#x-%d-%#x-", block.Hash().Bytes()[:4], i, tx.Hash().Bytes()[:4])
+		if !canon {
+			prefix = fmt.Sprintf("%valt-", prefix)
+		}
+		var dump *os.File
+		dump, err := os.CreateTemp(os.TempDir(), prefix)
+		if err != nil {
+			return nil, err
+		}
+		dumps = append(dumps, dump.Name())
+		// Set up the tracer and EVM for the transaction.
+		var (
+			writer = bufio.NewWriter(dump)
+			tracer = logger.NewJSONLogger(&logConfig, writer)
+			evm    = vm.NewEVM(vmctx, statedb, chainConfig, vm.Config{
+				Tracer:    tracer,
+				NoBaseFee: true,
+			})
+		)
 		// Execute the transaction and flush any traces to disk
 		// Include state sync tx if canonical (post-Madhugiri) or BorTraceEnabled (pre-Madhugiri).
 		//nolint:nestif
@@ -1156,21 +1164,21 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 			_, err = statefull.ApplyBorMessage(evm, callmsg)
 
 			if writer != nil {
-				writer.Flush()
+				_ = writer.Flush()
 			}
 		} else if !(stateSyncPresent && i == len(txs)-1) {
 			statedb.SetTxContext(tx.Hash(), i)
-			if vmConf.Tracer.OnTxStart != nil {
-				vmConf.Tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
+			if tracer.OnTxStart != nil {
+				tracer.OnTxStart(evm.GetVMContext(), tx, msg.From)
 			}
 
 			// nolint : contextcheck
 			vmRet, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit), nil)
-			if vmConf.Tracer.OnTxEnd != nil {
-				vmConf.Tracer.OnTxEnd(&types.Receipt{GasUsed: vmRet.UsedGas}, err)
+			if tracer.OnTxEnd != nil {
+				tracer.OnTxEnd(&types.Receipt{GasUsed: vmRet.UsedGas}, err)
 			}
 			if writer != nil {
-				writer.Flush()
+				_ = writer.Flush()
 			}
 		}
 
@@ -1235,6 +1243,7 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 			if !api.backend.TxIndexDone() {
 				return nil, ethapi.NewTxIndexingError()
 			}
+			// Only mined txes are supported
 			return nil, errTxNotFound
 		}
 	}
@@ -1326,41 +1335,53 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 
 	defer release()
 
-	vmctx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
+	h := block.Header()
+	blockContext := core.NewEVMBlockContext(h, api.chainContext(ctx), nil)
 
 	// Apply the customization rules if required.
 	if config != nil {
-		if overrideErr := config.BlockOverrides.Apply(&vmctx); overrideErr != nil {
-			return nil, overrideErr
+		if config.BlockOverrides != nil && config.BlockOverrides.Number != nil && config.BlockOverrides.Number.ToInt().Uint64() == h.Number.Uint64()+1 {
+			// Overriding the block number to n+1 is a common way for wallets to
+			// simulate transactions, however without the following fix, a contract
+			// can assert it is being simulated by checking if blockhash(n) == 0x0 and
+			// can behave differently during the simulation. (#32175 for more info)
+			// --
+			// Modify the parent hash and number so that downstream, blockContext's
+			// GetHash function can correctly return n.
+			h.ParentHash = h.Hash()
+			h.Number.Add(h.Number, big.NewInt(1))
 		}
-		rules := api.backend.ChainConfig().Rules(vmctx.BlockNumber, vmctx.Random != nil, vmctx.Time)
-
+		if err := config.BlockOverrides.Apply(&blockContext); err != nil {
+			return nil, err
+		}
+		rules := api.backend.ChainConfig().Rules(blockContext.BlockNumber, blockContext.Random != nil, blockContext.Time)
 		precompiles = vm.ActivePrecompiledContracts(rules)
 		if err := config.StateOverrides.Apply(statedb, precompiles); err != nil {
 			return nil, err
 		}
 	}
-	// Execute the trace
-	if err := args.CallDefaults(api.backend.RPCGasCap(), vmctx.BaseFee, api.backend.ChainConfig().ChainID); err != nil {
+
+	// Execute the trace.
+	if err := args.CallDefaults(api.backend.RPCGasCap(), blockContext.BaseFee, api.backend.ChainConfig().ChainID); err != nil {
 		return nil, err
 	}
 	var (
-		msg         = args.ToMessage(vmctx.BaseFee, true)
+		msg         = args.ToMessage(blockContext.BaseFee, true)
 		tx          = args.ToTransaction(types.LegacyTxType)
 		traceConfig *TraceConfig
 	)
 	// Lower the basefee to 0 to avoid breaking EVM
 	// invariants (basefee < feecap).
 	if msg.GasPrice.Sign() == 0 {
-		vmctx.BaseFee = new(big.Int)
+		blockContext.BaseFee = new(big.Int)
 	}
 	if msg.BlobGasFeeCap != nil && msg.BlobGasFeeCap.BitLen() == 0 {
-		vmctx.BlobBaseFee = new(big.Int)
+		blockContext.BlobBaseFee = new(big.Int)
 	}
 	if config != nil {
 		traceConfig = &config.TraceConfig
 	}
-	return api.traceTx(ctx, tx, msg, new(Context), vmctx, statedb, traceConfig, precompiles)
+	return api.traceTx(ctx, tx, msg, new(Context), blockContext, statedb, traceConfig, precompiles)
 }
 
 // traceTx configures a new tracer according to the provided configuration, and
