@@ -1915,6 +1915,7 @@ func makeInvalidBlobTx() *types.Transaction {
 // This test ensures that the peer will be disconnected for protocol violation
 // and all its internal traces should be removed properly.
 func TestTransactionProtocolViolation(t *testing.T) {
+	t.Skip("bor: not relevant, transaction type not supported")
 	//log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
 
 	var (
