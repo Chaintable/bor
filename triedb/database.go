@@ -18,6 +18,7 @@ package triedb
 
 import (
 	"errors"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -87,7 +88,7 @@ type Database struct {
 	config      *Config        // Configuration for trie database
 	preimages   *preimageStore // The store for caching preimages
 	backend     backend        // The backend for managing trie nodes
-	readBackend backend
+	readBackend atomic.Value   // Stores backend interface, lock-free for concurrent reads
 }
 
 // NewDatabase initializes the trie database with default settings, note
@@ -117,15 +118,15 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	return db
 }
 
-func (db *Database) SetReadBackend(backend backend) {
-	db.readBackend = backend
+func (db *Database) SetReadBackend(b backend) {
+	db.readBackend.Store(b)
 }
 
 // Reader returns a reader for accessing all trie nodes with provided state root.
 // An error will be returned if the requested state is not available.
 func (db *Database) NodeReader(blockRoot common.Hash) (database.NodeReader, error) {
-	if db.readBackend != nil {
-		return db.readBackend.NodeReader(blockRoot)
+	if rb := db.readBackend.Load(); rb != nil {
+		return rb.(backend).NodeReader(blockRoot)
 	}
 	return db.backend.NodeReader(blockRoot)
 }

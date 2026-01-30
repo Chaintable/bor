@@ -21,6 +21,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -46,6 +47,7 @@ func (*devNull) Close() error                      { return nil }
 type journal struct {
 	path   string         // Filesystem path to store the transactions at
 	writer io.WriteCloser // Output stream to write new transactions into
+	mu     sync.Mutex     // Protects writer for concurrent access
 }
 
 // newTxJournal creates a new transaction journal to
@@ -125,6 +127,9 @@ func (journal *journal) load(add func([]*types.Transaction) []error) error {
 }
 
 func (journal *journal) setupWriter() error {
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+
 	if journal.writer != nil {
 		if err := journal.writer.Close(); err != nil {
 			return err
@@ -145,6 +150,9 @@ func (journal *journal) setupWriter() error {
 
 // insert adds the specified transaction to the local disk journal.
 func (journal *journal) insert(tx *types.Transaction) error {
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+
 	if journal.writer == nil {
 		return errNoActiveJournal
 	}
@@ -159,6 +167,9 @@ func (journal *journal) insert(tx *types.Transaction) error {
 // rotate regenerates the transaction journal based on the current contents of
 // the transaction pool.
 func (journal *journal) rotate(all map[common.Address]types.Transactions) error {
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+
 	// Close the current journal (if any is open)
 	if journal.writer != nil {
 		if err := journal.writer.Close(); err != nil {
@@ -211,6 +222,9 @@ func (journal *journal) rotate(all map[common.Address]types.Transactions) error 
 
 // close flushes the transaction journal contents to disk and closes the file.
 func (journal *journal) close() error {
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+
 	var err error
 	if journal.writer != nil {
 		err = journal.writer.Close()
