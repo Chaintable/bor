@@ -426,6 +426,12 @@ type SealerConfig struct {
 
 	// BaseFeeChangeDenominator is the base fee change rate (must be >0, default 64) for post-Lisovo blocks
 	BaseFeeChangeDenominator uint64 `hcl:"base-fee-change-denominator,optional" toml:"base-fee-change-denominator,optional"`
+
+	// EnablePrefetch enables transaction prefetching from pool during block building
+	EnablePrefetch bool `hcl:"prefetch,optional" toml:"prefetch,optional"`
+
+	// PrefetchGasLimitPercent is the gas limit percentage for prefetching (e.g., 100 = 100%, 110 = 110%)
+	PrefetchGasLimitPercent uint64 `hcl:"prefetch-gaslimit-percent,optional" toml:"prefetch-gaslimit-percent,optional"`
 }
 
 type JsonRPCConfig struct {
@@ -851,6 +857,8 @@ func DefaultConfig() *Config {
 			Recommit:                 125 * time.Second,
 			CommitInterruptFlag:      true,
 			BlockTime:                0,
+			EnablePrefetch:           false, // Disabled by default, requires explicit opt-in
+			PrefetchGasLimitPercent:  100,
 			TargetGasPercentage:      0, // Initialize to 0, will be set from CLI or remain 0 (meaning use default)
 			BaseFeeChangeDenominator: 0, // Initialize to 0, will be set from CLI or remain 0 (meaning use default)
 		},
@@ -1209,6 +1217,13 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 		n.Miner.ExtraData = []byte(c.Sealer.ExtraData)
 		n.Miner.CommitInterruptFlag = c.Sealer.CommitInterruptFlag
 		n.Miner.BlockTime = c.Sealer.BlockTime
+		n.Miner.EnablePrefetch = c.Sealer.EnablePrefetch
+		n.Miner.PrefetchGasLimitPercent = c.Sealer.PrefetchGasLimitPercent
+
+		// Validate prefetch gas limit percentage
+		if c.Sealer.EnablePrefetch && c.Sealer.PrefetchGasLimitPercent > 150 {
+			return nil, fmt.Errorf("miner.prefetch-gaslimit-percent (%d) must not exceed 150%%", c.Sealer.PrefetchGasLimitPercent)
+		}
 
 		// Dynamic gas limit configuration
 		n.Miner.EnableDynamicGasLimit = c.Sealer.EnableDynamicGasLimit
