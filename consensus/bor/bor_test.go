@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -867,5 +868,85 @@ func TestVerifySealRejectsOversizedDifficulty(t *testing.T) {
 	if diffErr.Actual != math.MaxUint64 {
 		t.Fatalf("unexpected Actual in WrongDifficultyError: got %d, want %d",
 			diffErr.Actual, uint64(math.MaxUint64))
+	}
+}
+
+func TestVerifyHeaderRejectsInvalidBlockNumber(t *testing.T) {
+	t.Parallel()
+
+	privKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signerAddr := crypto.PubkeyToAddress(privKey.PublicKey)
+
+	sp := &fakeSpanner{
+		vals: []*valset.Validator{
+			{Address: signerAddr, VotingPower: 1},
+		},
+	}
+
+	borCfg := &params.BorConfig{
+		Sprint: map[string]uint64{"0": 64},
+		Period: map[string]uint64{"0": 2},
+	}
+
+	// Use a fixed past timestamp to avoid "block in the future" errors
+	chain, b := newChainAndBorForTest(t, sp, borCfg, false, common.Address{}, 1600000000)
+
+	parent := chain.HeaderChain().GetHeaderByNumber(0)
+	require.NotNil(t, parent)
+
+	// Block number that skips ahead (non-contiguous)
+	header := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     big.NewInt(10), // Should be 1
+		Time:       parent.Time + 1000,
+		Difficulty: big.NewInt(2),
+		Extra:      make([]byte, 32+65),
+		UncleHash:  types.EmptyUncleHash,
+		GasLimit:   parent.GasLimit,
+		BaseFee:    parent.BaseFee,
+	}
+
+	sigHash := SealHash(header, borCfg)
+	sig, err := crypto.Sign(sigHash.Bytes(), privKey)
+	require.NoError(t, err)
+	copy(header.Extra[len(header.Extra)-65:], sig)
+
+	err = b.VerifyHeader(chain.HeaderChain(), header)
+	if err == nil {
+		t.Fatal("expected VerifyHeader to reject non-contiguous block number")
+	}
+	if !errors.Is(err, consensus.ErrInvalidNumber) {
+		t.Fatalf("expected ErrInvalidNumber, got %v", err)
+	}
+
+	// Test overflow case: parent + 1 + 2^64 (would pass with uint64 truncation)
+	overflow := new(big.Int).Lsh(big.NewInt(1), 64)
+	overflow.Add(overflow, parent.Number)
+	overflow.Add(overflow, big.NewInt(1))
+
+	header2 := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     overflow,
+		Time:       parent.Time + 1000,
+		Difficulty: big.NewInt(2),
+		Extra:      make([]byte, 32+65),
+		UncleHash:  types.EmptyUncleHash,
+		GasLimit:   parent.GasLimit,
+		BaseFee:    parent.BaseFee,
+	}
+
+	sigHash2 := SealHash(header2, borCfg)
+	sig2, err := crypto.Sign(sigHash2.Bytes(), privKey)
+	require.NoError(t, err)
+	copy(header2.Extra[len(header2.Extra)-65:], sig2)
+
+	err = b.VerifyHeader(chain.HeaderChain(), header2)
+	if err == nil {
+		t.Fatal("expected VerifyHeader to reject overflow block number")
+	}
+	if !errors.Is(err, consensus.ErrInvalidNumber) {
+		t.Fatalf("expected ErrInvalidNumber for overflow, got %v", err)
 	}
 }
