@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	stateSyncTotalTimeout = 5 * time.Minute
+	stateSyncTotalTimeout = 1 * time.Minute
 )
 
 func (h *HeimdallGRPCClient) StateSyncEvents(ctx context.Context, fromID uint64, to int64) ([]*clerk.EventRecordWithTime, error) {
