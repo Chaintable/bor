@@ -176,7 +176,8 @@ func newAllForksChainConfig(borCfg *params.BorConfig) *params.ChainConfig {
 func newChainAndBorForTestWithConfig(t *testing.T, sp Spanner, cfg *params.ChainConfig, devFake bool, signerAddr common.Address, genesisTime uint64, genOpts ...func(*core.Genesis)) (*core.BlockChain, *Bor) {
 	t.Helper()
 
-	b := &Bor{chainConfig: cfg, config: cfg.Bor, DevFakeAuthor: devFake}
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	b := &Bor{chainConfig: cfg, config: cfg.Bor, DevFakeAuthor: devFake, ctx: ctx, ctxCancel: ctxCancel}
 	b.db = rawdb.NewMemoryDatabase()
 	b.recents = ttlcache.New(
 		ttlcache.WithTTL[common.Hash, *Snapshot](veblopBlockTimeout),
@@ -4555,7 +4556,7 @@ func TestSubSecondLateBlockTriggersTimeAdjustment(t *testing.T) {
 		}
 
 		before := time.Now()
-		err := b.Prepare(chain.HeaderChain(), header)
+		err := b.Prepare(chain.HeaderChain(), header, false)
 		require.NoError(t, err)
 
 		expectedMin := uint64(before.Add(1 * time.Second).Unix())
@@ -4598,7 +4599,7 @@ func TestSubSecondLateBlockTriggersTimeAdjustment(t *testing.T) {
 		}
 
 		before := time.Now()
-		err := b.Prepare(chain.HeaderChain(), header)
+		err := b.Prepare(chain.HeaderChain(), header, false)
 		require.NoError(t, err)
 
 		require.False(t, header.ActualTime.IsZero(),
