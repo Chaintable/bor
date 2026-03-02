@@ -1081,6 +1081,8 @@ func (w *worker) makeEnv(header *types.Header, coinbase common.Address, witness 
 		prefetchReader: genParams.prefetchReader,
 		processReader:  genParams.processReader,
 	}
+	env.evm.SetInterrupt(&w.interruptBlockBuilding)
+
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
 
@@ -1114,7 +1116,7 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 		gp   = env.gasPool.Gas()
 	)
 
-	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, &w.interruptBlockBuilding)
+	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
