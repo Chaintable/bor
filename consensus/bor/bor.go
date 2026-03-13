@@ -419,10 +419,11 @@ func (c *Bor) verifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 	number := header.Number.Uint64()
 	now := uint64(time.Now().Unix())
 
-	if c.config.IsRio(header.Number) {
-		// Rio HF introduced flexible blocktime (can be set larger than consensus without approval).
-		// Using strict CalcProducerDelay would reject valid blocks, so we just ensure announcement
-		// time comes after parent time to allow for flexible blocktime.
+	if c.config.IsGiugliano(header.Number) {
+		// Rio introduced flexible blocktime (can be set larger than consensus without approval).
+		// Using strict CalcProducerDelay for early block announcement (introduced back in Giugliano)
+		// would reject valid blocks, so we just ensure announcement time comes after parent time to
+		// allow for flexible blocktime.
 		var parent *types.Header
 
 		if len(parents) > 0 {
@@ -431,17 +432,17 @@ func (c *Bor) verifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 			parent = chain.GetHeader(header.ParentHash, number-1)
 		}
 		if parent == nil || now < parent.Time {
-			log.Error("Block announced too early post rio", "number", number, "headerTime", header.Time, "now", now)
+			log.Error("Block announced too early post giugliano", "number", number, "headerTime", header.Time, "now", now)
 			return consensus.ErrFutureBlock
 		}
 		// Upper-bound check: a block whose timestamp is more than maxAllowedFutureBlockTimeSeconds
 		// ahead of the local clock is rejected.
 		if header.Time > now+maxAllowedFutureBlockTimeSeconds {
-			log.Error("Block timestamp too far in future post rio", "number", number, "headerTime", header.Time, "now", now)
+			log.Error("Block timestamp too far in future post giugliano", "number", number, "headerTime", header.Time, "now", now)
 			return consensus.ErrFutureBlock
 		}
 	} else if c.config.IsBhilai(header.Number) {
-		// Allow early blocks if Bhilai HF is enabled
+		// TODO: Once Amoy and Mainnet supports Giugliano HF, we are safe to remove this check (since it only works for block future blocks)
 		// Don't waste time checking blocks from the future but allow a buffer of block time for
 		// early block announcements. Note that this is a loose check and would allow early blocks
 		// from non-primary producer. Such blocks will be rejected later when we know the succession
@@ -533,7 +534,7 @@ func (c *Bor) verifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 	cacheTTL := veblopBlockTimeout
 	nowTime := time.Now()
 	headerTime := time.Unix(int64(header.Time), 0)
-	if headerTime.After(nowTime) {
+	if headerTime.After(nowTime) && c.config.IsGiugliano(header.Number) {
 		// Add the time from now until header time as extra to the base timeout
 		extraTime := headerTime.Sub(nowTime)
 		cacheTTL = veblopBlockTimeout + extraTime
@@ -1151,8 +1152,8 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, w
 		}
 	}
 
-	// Wait before start the block production if needed (previsously this wait was on Seal)
-	if c.config.IsBhilai(header.Number) && waitOnPrepare {
+	// Wait before start the block production if needed (previously this wait was on Seal)
+	if c.config.IsGiugliano(header.Number) && waitOnPrepare {
 		var successionNumber int
 		// if signer is not empty (RPC nodes have empty signer)
 		if currentSigner.signer != (common.Address{}) {
@@ -1431,8 +1432,8 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, witnes
 	var delay time.Duration
 
 	// Sweet, the protocol permits us to sign the block, wait for our time
-	if c.config.IsBhilai(header.Number) && successionNumber == 0 {
-		delay = 0 // delay was moved to Prepare for bhilai and later
+	if c.config.IsGiugliano(header.Number) && successionNumber == 0 {
+		delay = 0 // delay was moved to Prepare for giugliano and later
 	} else {
 		delay = time.Until(header.GetActualTime()) // Wait until we reach header time
 	}
