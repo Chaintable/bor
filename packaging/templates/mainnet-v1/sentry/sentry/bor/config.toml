@@ -151,12 +151,11 @@ syncmode = "full"
     # [telemetry.influx.tags]
 
 [cache]
-    cache = 49152
-    gc = 5
-    gomemlimit = "100GB"
-    snapshot = 25
-    database = 45
-    trie = 25
+    cache = 4096
+    # gc = 25
+    # snapshot = 10
+    # database = 50
+    # trie = 15
     # noprefetch = false
     # preimages = false
     # txlookuplimit = 2350000
