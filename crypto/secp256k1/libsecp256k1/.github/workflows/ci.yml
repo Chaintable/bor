@@ -46,7 +46,7 @@ env:
 jobs:
   docker_cache:
     name: "Build Docker image"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -65,7 +65,7 @@ jobs:
 
   linux_debian:
     name: "x86_64: Linux (Debian stable)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     strategy:
@@ -98,7 +98,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         env: ${{ matrix.configuration.env_vars }}
@@ -127,7 +127,7 @@ jobs:
 
   i686_debian:
     name: "i686: Linux (Debian stable)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     strategy:
@@ -149,7 +149,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         uses: ./.github/actions/run-in-docker-action
@@ -177,7 +177,7 @@ jobs:
 
   s390x_debian:
     name: "s390x (big-endian): Linux (Debian stable, QEMU)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     env:
@@ -195,7 +195,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         uses: ./.github/actions/run-in-docker-action
@@ -223,7 +223,7 @@ jobs:
 
   arm32_debian:
     name: "ARM32: Linux (Debian stable, QEMU)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     strategy:
@@ -248,7 +248,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         env: ${{ matrix.configuration.env_vars }}
@@ -277,7 +277,7 @@ jobs:
 
   arm64_debian:
     name: "ARM64: Linux (Debian stable, QEMU)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     env:
@@ -305,7 +305,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         env: ${{ matrix.configuration.env_vars }}
@@ -334,7 +334,7 @@ jobs:
 
   ppc64le_debian:
     name: "ppc64le: Linux (Debian stable, QEMU)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     env:
@@ -352,7 +352,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         uses: ./.github/actions/run-in-docker-action
@@ -380,7 +380,7 @@ jobs:
 
   valgrind_debian:
     name: "Valgrind (memcheck)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     strategy:
@@ -407,7 +407,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         env: ${{ matrix.configuration.env_vars }}
@@ -436,7 +436,7 @@ jobs:
 
   sanitizers_debian:
     name: "UBSan, ASan, LSan"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     strategy:
@@ -464,7 +464,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         env: ${{ matrix.configuration.env_vars }}
@@ -493,7 +493,7 @@ jobs:
 
   msan_debian:
     name: "MSan"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     strategy:
@@ -528,7 +528,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         env: ${{ matrix.configuration.env_vars }}
@@ -557,7 +557,7 @@ jobs:
 
   mingw_debian:
     name: ${{ matrix.configuration.job_name }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     env:
@@ -584,7 +584,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         env: ${{ matrix.configuration.env_vars }}
@@ -638,7 +638,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Homebrew packages
         run: |
@@ -697,7 +697,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Homebrew packages
         run: |
@@ -749,7 +749,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Generate buildsystem
         run: cmake -E env CFLAGS="/WX ${{ matrix.configuration.cpp_flags }}" cmake -B build -DSECP256K1_ENABLE_MODULE_RECOVERY=ON -DSECP256K1_BUILD_EXAMPLES=ON ${{ matrix.configuration.cmake_options }}
@@ -777,7 +777,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Add cl.exe to PATH
         uses: ilammy/msvc-dev-cmd@v1
@@ -788,7 +788,7 @@ jobs:
 
   cxx_fpermissive_debian:
     name: "C++ -fpermissive (entire project)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     env:
@@ -805,7 +805,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         uses: ./.github/actions/run-in-docker-action
@@ -833,12 +833,12 @@ jobs:
 
   cxx_headers_debian:
     name: "C++ (public headers)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     needs: docker_cache
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         uses: ./.github/actions/run-in-docker-action
@@ -851,14 +851,14 @@ jobs:
 
   sage:
     name: "SageMath prover"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
     container:
       image: sagemath/sagemath:latest
       options: --user root
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: CI script
         run: |
@@ -866,11 +866,11 @@ jobs:
           sage prove_group_implementations.sage
 
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu24.04-16core-64GB-600SSD-bor
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - run: ./autogen.sh && ./configure --enable-dev-mode && make distcheck
 

@@ -23,6 +23,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -54,8 +55,9 @@ var allPrecompiles = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{2}):    &sha256hash{},
 	common.BytesToAddress([]byte{3}):    &ripemd160hash{},
 	common.BytesToAddress([]byte{4}):    &dataCopy{},
-	common.BytesToAddress([]byte{5}):    &bigModExp{eip2565: false},
-	common.BytesToAddress([]byte{0xf5}): &bigModExp{eip2565: true},
+	common.BytesToAddress([]byte{5}):    &bigModExp{eip2565: false, eip7883: false},
+	common.BytesToAddress([]byte{0xf5}): &bigModExp{eip2565: true, eip7883: false},
+	common.BytesToAddress([]byte{0xf6}): &bigModExp{eip2565: true, eip7883: true},
 	common.BytesToAddress([]byte{6}):    &bn256AddIstanbul{},
 	common.BytesToAddress([]byte{7}):    &bn256ScalarMulIstanbul{},
 	common.BytesToAddress([]byte{8}):    &bn256PairingIstanbul{},
@@ -253,6 +255,9 @@ func BenchmarkPrecompiledModExp(b *testing.B) { benchJson("modexp", "05", b) }
 func TestPrecompiledModExpEip2565(t *testing.T)      { testJson("modexp_eip2565", "f5", t) }
 func BenchmarkPrecompiledModExpEip2565(b *testing.B) { benchJson("modexp_eip2565", "f5", b) }
 
+func TestPrecompiledModExpEip7883(t *testing.T)      { testJson("modexp_eip7883", "f6", t) }
+func BenchmarkPrecompiledModExpEip7883(b *testing.B) { benchJson("modexp_eip7883", "f6", b) }
+
 // Tests the sample inputs from the elliptic curve addition EIP 213.
 func TestPrecompiledBn256Add(t *testing.T)      { testJson("bn256Add", "06", t) }
 func BenchmarkPrecompiledBn256Add(b *testing.B) { benchJson("bn256Add", "06", b) }
@@ -391,7 +396,7 @@ func BenchmarkPrecompiledBLS12381G1MultiExpWorstCase(b *testing.B) {
 		Name:        "WorstCaseG1",
 		NoBenchmark: false,
 	}
-	benchmarkPrecompiled("f0c", testcase, b)
+	benchmarkPrecompiled("f0b", testcase, b)
 }
 
 // BenchmarkPrecompiledBLS12381G2MultiExpWorstCase benchmarks the worst case we could find that still fits a gaslimit of 10MGas.
@@ -413,7 +418,7 @@ func BenchmarkPrecompiledBLS12381G2MultiExpWorstCase(b *testing.B) {
 		Name:        "WorstCaseG2",
 		NoBenchmark: false,
 	}
-	benchmarkPrecompiled("f0f", testcase, b)
+	benchmarkPrecompiled("f0d", testcase, b)
 }
 
 // Benchmarks the sample inputs from the P256VERIFY precompile.
@@ -435,19 +440,83 @@ func TestPrecompiledP256Verify(t *testing.T) {
 // BOR: if this test failed, it means you should include PrecompiledP256Verify in the PrecompiledContracts
 // TODO: handle when common.BytesToAddress([]byte{0x01, 0x00}) will colide a new Ethereum's precompile
 func TestPrecompiledP256VerifyAlwaysAvailableInHFs(t *testing.T) {
-	latestHfRules := params.BorMainnetChainConfig.Rules(big.NewInt(math.MaxInt64), true, 0)
-	precompiledP256VerifyAddress := common.BytesToAddress([]byte{0x01, 0x00})
+	chainConfigs := []*params.ChainConfig{params.BorMainnetChainConfig, params.AmoyChainConfig}
+	for _, chainConfig := range chainConfigs {
+		latestHfRules := chainConfig.Rules(big.NewInt(math.MaxInt64), true, 0)
+		precompiledP256VerifyAddress := common.BytesToAddress([]byte{0x01, 0x00})
 
-	addresses := ActivePrecompiles(latestHfRules)
-	addressFound := false
-	for _, addr := range addresses {
-		if addr == precompiledP256VerifyAddress {
-			addressFound = true
-			break
+		addresses := ActivePrecompiles(latestHfRules)
+		addressFound := false
+		for _, addr := range addresses {
+			if addr == precompiledP256VerifyAddress {
+				addressFound = true
+				break
+			}
+		}
+		assert.Equal(t, true, addressFound)
+
+		preCompiledContracts := ActivePrecompiledContracts(latestHfRules)
+		assert.Equal(t, &p256Verify{}, preCompiledContracts[precompiledP256VerifyAddress])
+	}
+}
+
+// If this test failed, it likely means a new HF were introduced and is very likely that PreCompiles got changed (by introducing new ones, changing olds ones or removing).
+// Please follow the instructions here to properly handle this new HF
+//
+//  1. Make sure if p256Verify were properly set on this Hardfork, it was introduced by us in PIP-27
+//
+//  2. Double check all the changes on the preCompiles of the current HF and the new one.
+//     You should also pay attention for any params changes like in &bigModExp{eip2565: true, eip7823: true, eip7883: true}
+//     Make sure all changes reflects the Ethereum's new proposals while reflecting the changes we did internally. Currently just PIP-27
+//
+//  3. Check if Erigon reflects the exact same configuration for the PreCompiles, including also the same params for precompiles
+//
+//  4. Runs a e2e test which includes all the preCompiles in a single transaction. If a new preCompile were introduced, please reflect the new one on the tests
+//     The test must run on a multiclient network, including both Erigon and Bor. The test is available in our e2e repository.
+//
+//  5. After all checks done, you can increase insert the NewHF on the expected list to make the test pass
+func TestReinforceMultiClientPreCompilesTest(t *testing.T) {
+	rulesType := reflect.TypeOf(params.Rules{})
+
+	// Extract actual field names
+	actual := make([]string, 0, rulesType.NumField())
+	for i := 0; i < rulesType.NumField(); i++ {
+		actual = append(actual, rulesType.Field(i).Name)
+	}
+
+	// Expected field names (in order)
+	expected := []string{
+		"ChainID",
+		"IsHomestead",
+		"IsEIP150",
+		"IsEIP155",
+		"IsEIP158",
+		"IsEIP2929",
+		"IsEIP4762",
+		"IsByzantium",
+		"IsConstantinople",
+		"IsPetersburg",
+		"IsIstanbul",
+		"IsBerlin",
+		"IsLondon",
+		"IsMerge",
+		"IsShanghai",
+		"IsCancun",
+		"IsPrague",
+		"IsOsaka",
+		"IsVerkle",
+		"IsMadhugiri",
+		"IsMadhugiriPro",
+	}
+
+	if len(actual) != len(expected) {
+		t.Fatalf("A new hardfork were detected. Please read and follow the instruction on the comment section of this test")
+	}
+
+	// Compare names one-by-one for stability
+	for i := range expected {
+		if actual[i] != expected[i] {
+			t.Fatalf("A new hardfork were detected. Please read and follow the instruction on the comment section of this test")
 		}
 	}
-	assert.Equal(t, true, addressFound)
-
-	preCompiledContracts := ActivePrecompiledContracts(latestHfRules)
-	assert.Equal(t, &p256Verify{}, preCompiledContracts[precompiledP256VerifyAddress])
 }

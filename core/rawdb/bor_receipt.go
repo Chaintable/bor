@@ -36,7 +36,7 @@ func ReadBorReceiptRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.Raw
 
 	// First, try to fetch from KV db
 	data, _ = db.Get(borReceiptKey(number, hash))
-	if data != nil {
+	if len(data) != 0 {
 		return data
 	}
 
@@ -44,14 +44,13 @@ func ReadBorReceiptRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.Raw
 		// Check if the data is in ancients
 		if isCanon(reader, number, hash) {
 			data, _ = reader.Ancient(freezerBorReceiptTable, number)
-
 			return nil
 		}
 
 		return nil
 	})
 	if err != nil {
-		log.Warn("during ReadBorReceiptRLP", "number", number, "hash", hash, "err", err)
+		log.Warn("Unable to read bor receipt rlp", "number", number, "hash", hash, "err", err)
 	}
 
 	return data
@@ -85,25 +84,23 @@ func ReadBorReceipt(db ethdb.Reader, hash common.Hash, number uint64, config *pa
 		return nil
 	}
 
-	// We're deriving many fields from the block body, retrieve beside the receipt
+	// Fetch the raw bor receipt for given block
 	borReceipt := ReadRawBorReceipt(db, hash, number)
 	if borReceipt == nil {
 		return nil
 	}
 
-	// We're deriving many fields from the block body, retrieve beside the receipt
+	// Fetch normal receipts to derive certain fields for bor receipts. Don't return if no
+	// receipts are present as a block with only state-sync transaction can exist.
 	receipts := ReadRawReceipts(db, hash, number)
-	if receipts == nil {
+
+	header := ReadHeader(db, hash, number)
+	if header == nil {
+		log.Error("Missing header but have bor receipt", "hash", hash, "number", number)
 		return nil
 	}
 
-	body := ReadBody(db, hash, number)
-	if body == nil {
-		log.Error("Missing body but have bor receipt", "hash", hash, "number", number)
-		return nil
-	}
-
-	if err := types.DeriveFieldsForBorReceipt(borReceipt, hash, number, receipts); err != nil {
+	if err := types.DeriveFieldsForBorReceipt(borReceipt, receipts, header); err != nil {
 		log.Error("Failed to derive bor receipt fields", "hash", hash, "number", number, "err", err)
 		return nil
 	}

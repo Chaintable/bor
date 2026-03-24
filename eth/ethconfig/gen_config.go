@@ -39,6 +39,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DatabaseHandles                      int                    `toml:"-"`
 		DatabaseCache                        int
 		DatabaseFreezer                      string
+		DatabaseEra                          string
 		LevelDbCompactionTableSize           uint64
 		LevelDbCompactionTableSizeMultiplier float64
 		LevelDbCompactionTotalSize           uint64
@@ -61,7 +62,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		RPCReturnDataLimit                   uint64
 		RPCEVMTimeout                        time.Duration
 		RPCTxFeeCap                          float64
-		OverridePrague                       *big.Int `toml:",omitempty"`
+		OverrideOsaka                        *big.Int `toml:",omitempty"`
 		HeimdallURL                          string
 		HeimdallTimeout                      time.Duration
 		WithoutHeimdall                      bool
@@ -81,6 +82,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		FastForwardThreshold                 uint64
 		WitnessPruneThreshold                uint64
 		WitnessPruneInterval                 time.Duration
+		EnableParallelStatelessImport        bool
+		EnableParallelStatelessImportWorkers int
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -103,10 +106,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.DatabaseHandles = c.DatabaseHandles
 	enc.DatabaseCache = c.DatabaseCache
 	enc.DatabaseFreezer = c.DatabaseFreezer
-	enc.LevelDbCompactionTableSize = c.LevelDbCompactionTableSize
-	enc.LevelDbCompactionTableSizeMultiplier = c.LevelDbCompactionTableSizeMultiplier
-	enc.LevelDbCompactionTotalSize = c.LevelDbCompactionTotalSize
-	enc.LevelDbCompactionTotalSizeMultiplier = c.LevelDbCompactionTotalSizeMultiplier
+	enc.DatabaseEra = c.DatabaseEra
 	enc.TrieCleanCache = c.TrieCleanCache
 	enc.TrieDirtyCache = c.TrieDirtyCache
 	enc.TrieTimeout = c.TrieTimeout
@@ -125,7 +125,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RPCReturnDataLimit = c.RPCReturnDataLimit
 	enc.RPCEVMTimeout = c.RPCEVMTimeout
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
-	enc.OverridePrague = c.OverridePrague
+	enc.OverrideOsaka = c.OverrideOsaka
 	enc.HeimdallURL = c.HeimdallURL
 	enc.HeimdallTimeout = c.HeimdallTimeout
 	enc.WithoutHeimdall = c.WithoutHeimdall
@@ -145,6 +145,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.FastForwardThreshold = c.FastForwardThreshold
 	enc.WitnessPruneThreshold = c.WitnessPruneThreshold
 	enc.WitnessPruneInterval = c.WitnessPruneInterval
+	enc.EnableParallelStatelessImport = c.EnableParallelStatelessImport
+	enc.EnableParallelStatelessImportWorkers = c.EnableParallelStatelessImportWorkers
 	return &enc, nil
 }
 
@@ -171,6 +173,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DatabaseHandles                      *int                   `toml:"-"`
 		DatabaseCache                        *int
 		DatabaseFreezer                      *string
+		DatabaseEra                          *string
 		LevelDbCompactionTableSize           *uint64
 		LevelDbCompactionTableSizeMultiplier *float64
 		LevelDbCompactionTotalSize           *uint64
@@ -193,7 +196,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		RPCReturnDataLimit                   *uint64
 		RPCEVMTimeout                        *time.Duration
 		RPCTxFeeCap                          *float64
-		OverridePrague                       *big.Int `toml:",omitempty"`
+		OverrideOsaka                        *big.Int `toml:",omitempty"`
 		HeimdallURL                          *string
 		HeimdallTimeout                      *time.Duration
 		WithoutHeimdall                      *bool
@@ -213,6 +216,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		FastForwardThreshold                 *uint64
 		WitnessPruneThreshold                *uint64
 		WitnessPruneInterval                 *time.Duration
+		EnableParallelStatelessImport        *bool
+		EnableParallelStatelessImportWorkers *int
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -278,17 +283,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.DatabaseFreezer != nil {
 		c.DatabaseFreezer = *dec.DatabaseFreezer
 	}
-	if dec.LevelDbCompactionTableSize != nil {
-		c.LevelDbCompactionTableSize = *dec.LevelDbCompactionTableSize
-	}
-	if dec.LevelDbCompactionTableSizeMultiplier != nil {
-		c.LevelDbCompactionTableSizeMultiplier = *dec.LevelDbCompactionTableSizeMultiplier
-	}
-	if dec.LevelDbCompactionTotalSize != nil {
-		c.LevelDbCompactionTotalSize = *dec.LevelDbCompactionTotalSize
-	}
-	if dec.LevelDbCompactionTotalSizeMultiplier != nil {
-		c.LevelDbCompactionTotalSizeMultiplier = *dec.LevelDbCompactionTotalSizeMultiplier
+	if dec.DatabaseEra != nil {
+		c.DatabaseEra = *dec.DatabaseEra
 	}
 	if dec.TrieCleanCache != nil {
 		c.TrieCleanCache = *dec.TrieCleanCache
@@ -344,8 +340,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.RPCTxFeeCap != nil {
 		c.RPCTxFeeCap = *dec.RPCTxFeeCap
 	}
-	if dec.OverridePrague != nil {
-		c.OverridePrague = dec.OverridePrague
+	if dec.OverrideOsaka != nil {
+		c.OverrideOsaka = dec.OverrideOsaka
 	}
 	if dec.HeimdallURL != nil {
 		c.HeimdallURL = *dec.HeimdallURL
@@ -403,6 +399,12 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.WitnessPruneInterval != nil {
 		c.WitnessPruneInterval = *dec.WitnessPruneInterval
+	}
+	if dec.EnableParallelStatelessImport != nil {
+		c.EnableParallelStatelessImport = *dec.EnableParallelStatelessImport
+	}
+	if dec.EnableParallelStatelessImportWorkers != nil {
+		c.EnableParallelStatelessImportWorkers = *dec.EnableParallelStatelessImportWorkers
 	}
 	return nil
 }

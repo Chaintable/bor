@@ -424,7 +424,7 @@ func TestInsertingSpanSizeBlocks(t *testing.T) {
 	}
 }
 
-func TestFetchStateSyncEvents(t *testing.T) {
+func TestFetchStateSyncEvents_PreMadhugiriHF(t *testing.T) {
 	t.Parallel()
 	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
 	fdlimit.Raise(2048)
@@ -495,6 +495,103 @@ func TestFetchStateSyncEvents(t *testing.T) {
 	validateStateSyncEvents(t, eventRecords, chain.GetStateSync())
 
 	insertNewBlock(t, chain, block)
+
+	// TODO: Ideally bor receipts should be present but as all state-sync events fails in this
+	// test, no logs are generated and hence empty receipts aren't written. Fix this.
+
+	// Ensure bor receipts are stored correctly
+	// borReceipt := chain.GetBorReceiptByHash(block.Hash())
+	// t.Log(borReceipt)
+	// require.NotNil(t, borReceipt, "bor receipt expected but found nil")
+	// require.Equal(t, uint8(0), borReceipt.Type, "bor receipt should have type 0")
+
+	receipts := chain.GetReceiptsByHash(block.Hash())
+	require.Equal(t, 0, len(receipts), "no normal receipts should be found")
+}
+
+func TestFetchStateSyncEvents_PostMadhugiriHF(t *testing.T) {
+	t.Parallel()
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
+	fdlimit.Raise(2048)
+
+	stateSyncConfirmationDelay := int64(128)
+	updateGenesis := func(gen *core.Genesis) {
+		gen.Config.Bor.StateSyncConfirmationDelay = map[string]uint64{"0": uint64(stateSyncConfirmationDelay)}
+		gen.Config.Bor.Sprint = map[string]uint64{"0": sprintSize}
+		gen.Config.Bor.MadhugiriBlock = big.NewInt(0) // Enable Madhugiri hardfork from genesis.
+	}
+	init := buildEthereumInstance(t, rawdb.NewMemoryDatabase(), updateGenesis)
+	chain := init.ethereum.BlockChain()
+	engine := init.ethereum.Engine()
+	_bor := engine.(*bor.Bor)
+	defer _bor.Close()
+
+	// Insert blocks for 0th sprint
+	block := init.genesis.ToBlock()
+
+	// Create a mock span 0
+	span0 := createMockSpan(addr, chain.Config().ChainID.String())
+	borValSet := borSpan.ConvertHeimdallValSetToBorValSet(span0.ValidatorSet)
+	currentValidators := borValSet.Validators
+
+	// Load mock span 0
+	res := loadSpanFromFile(t)
+
+	// Create mock bor spanner
+	spanner := getMockedSpanner(t, currentValidators)
+	_bor.SetSpanner(spanner)
+
+	// Create mock heimdall client
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	h := createMockHeimdall(ctrl, &span0, res)
+
+	// Mock state sync events
+	fromID := uint64(1)
+	// at # sprintSize, events are fetched for [fromID, (block-sprint).Time])
+	// as indore hf is enabled, we need to consider the stateSyncConfirmationDelay and
+	// we need to predict the time of 4th block (i.e. the sprint end block) to calculate
+	// the correct value of to. As per the config, non sprint end primary blocks take
+	// 1s and sprint end ones take 6s. This leads to 3*1 + 6 = 9s of added time from genesis.
+	to := int64(chain.GetHeaderByNumber(0).Time) + 9 - stateSyncConfirmationDelay
+	eventCount := 50
+
+	sample := getSampleEventRecord(t)
+	sample.Time = time.Unix(to-int64(eventCount+1), 0) // Last event.Time will be just < to
+	eventRecords := generateFakeStateSyncEvents(sample, eventCount)
+
+	h.EXPECT().StateSyncEvents(gomock.Any(), fromID, to).Return(eventRecords, nil).AnyTimes()
+	h.EXPECT().GetLatestSpan(gomock.Any()).Return(nil, fmt.Errorf("span not found")).AnyTimes()
+	_bor.SetHeimdallClient(h)
+
+	// Insert sprintSize # of blocks so that span is fetched at the start of a new sprint
+	for i := uint64(1); i < sprintSize; i++ {
+		if IsSpanEnd(i) {
+			currentValidators = borValSet.Validators
+		}
+
+		block = buildNextBlock(t, _bor, chain, block, nil, init.genesis.Config.Bor, nil, currentValidators, false)
+		insertNewBlock(t, chain, block)
+	}
+
+	block = buildNextBlock(t, _bor, chain, block, nil, init.genesis.Config.Bor, nil, borValSet.Validators, false)
+	insertNewBlock(t, chain, block)
+
+	// Fetch the last block and check if state-sync tx and receipts are available
+	lastBlock := chain.GetBlockByNumber(block.NumberU64())
+	txs := lastBlock.Transactions()
+	require.Equal(t, 1, len(txs), "state-sync tx should be part of block body")
+	require.Equal(t, uint8(types.StateSyncTxType), txs[0].Type(), "transaction should be of state-sync type")
+
+	receipts := chain.GetReceiptsByHash(lastBlock.Hash())
+	require.Equal(t, 1, len(receipts), "state-sync receipt should be stored against this block")
+	require.Equal(t, uint8(types.StateSyncTxType), receipts[0].Type, "receipt should be of state-sync type")
+	require.Equal(t, txs[0].Hash(), receipts[0].TxHash, "state-sync receipt hash should have correct tx hash")
+
+	// Confirm if bor receipts are not stored separately
+	borReceipt := chain.GetBorReceiptByHash(lastBlock.Hash())
+	require.Nil(t, borReceipt, "bor receipt should not be stored separately")
 }
 
 func validateStateSyncEvents(t *testing.T, expected []*clerk.EventRecordWithTime, got []*types.StateSyncData) {
@@ -858,7 +955,7 @@ func TestEIP1559Transition(t *testing.T) {
 	diskdb := rawdb.NewMemoryDatabase()
 	gspec.MustCommit(diskdb, triedb.NewDatabase(diskdb, triedb.HashDefaults))
 
-	chain, err := core.NewBlockChain(diskdb, nil, gspec, nil, engine, vm.Config{}, nil, nil, nil)
+	chain, err := core.NewBlockChain(diskdb, gspec, engine, core.DefaultConfig())
 	if err != nil {
 		t.Fatalf("failed to create tester chain: %v", err)
 	}
@@ -1082,7 +1179,7 @@ func TestBurnContract(t *testing.T) {
 	diskdb := rawdb.NewMemoryDatabase()
 	gspec.MustCommit(diskdb, triedb.NewDatabase(diskdb, triedb.HashDefaults))
 
-	chain, err := core.NewBlockChain(diskdb, nil, gspec, nil, engine, vm.Config{}, nil, nil, nil)
+	chain, err := core.NewBlockChain(diskdb, gspec, engine, core.DefaultConfig())
 	if err != nil {
 		t.Fatalf("failed to create tester chain: %v", err)
 	}
@@ -1439,7 +1536,7 @@ func TestTransitionWithoutEIP155(t *testing.T) {
 	diskdb := rawdb.NewMemoryDatabase()
 	gspec.MustCommit(diskdb, triedb.NewDatabase(diskdb, triedb.HashDefaults))
 
-	chain, err := core.NewBlockChain(diskdb, nil, gspec, nil, engine, vm.Config{}, nil, nil, nil)
+	chain, err := core.NewBlockChain(diskdb, gspec, engine, core.DefaultConfig())
 	if err != nil {
 		t.Fatalf("failed to create tester chain: %v", err)
 	}
@@ -1541,6 +1638,7 @@ func testEncodeSigHeader(w io.Writer, header *types.Header, c *params.BorConfig)
 // acting as a primary block producer. It ensures that consensus handles the header time and
 // block announcement time correctly.
 func TestEarlyBlockAnnouncementPostBhilai_Primary(t *testing.T) {
+	t.Skip("Skipping PIP-66 unitl it is enabled back")
 	t.Parallel()
 	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
 	fdlimit.Raise(2048)
@@ -1891,4 +1989,79 @@ func TestEarlyBlockAnnouncementPostBhilai_NonPrimary(t *testing.T) {
 	require.Equal(t,
 		bor.BlockTooSoonError{Number: 4, Succession: 2},
 		*err.(*bor.BlockTooSoonError))
+}
+
+// TestCustomBlockTimeMining tests that a miner can successfully create blocks with a custom block time
+// different from the consensus period. It sets consensus period to 1s and custom miner block time to 1.75s,
+// then verifies that approximately 34 blocks (60s / 1.75s) are mined in 1 minute.
+func TestCustomBlockTimeMining(t *testing.T) {
+	t.Parallel()
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
+	fdlimit.Raise(2048)
+
+	faucets := make([]*ecdsa.PrivateKey, 128)
+	for i := 0; i < len(faucets); i++ {
+		faucets[i], _ = crypto.GenerateKey()
+	}
+
+	genesis := InitGenesis(t, faucets, "./testdata/genesis_2val.json", 16)
+	genesis.Config.Bor.Period = map[string]uint64{"0": 1}        // Consensus period: 1s
+	genesis.Config.Bor.Sprint = map[string]uint64{"0": 16}       // Sprint size: 16 blocks
+	genesis.Config.Bor.ProducerDelay = map[string]uint64{"0": 0} // No producer delay
+	genesis.Config.Bor.BackupMultiplier = map[string]uint64{"0": 2}
+
+	genesis.Config.Bor.RioBlock = common.Big0
+
+	customBlockTime := 1750 * time.Millisecond
+
+	stack, ethBackend, err := InitMinerWithBlockTime(genesis, keys[0], true, customBlockTime)
+	require.NoError(t, err)
+	defer stack.Close()
+
+	for stack.Server().NodeInfo().Ports.Listener == 0 {
+		time.Sleep(250 * time.Millisecond)
+	}
+
+	borEngine := ethBackend.Engine().(*bor.Bor)
+	borEngine.Authorize(crypto.PubkeyToAddress(keys[0].PublicKey), func(account accounts.Account, s string, data []byte) ([]byte, error) {
+		return crypto.Sign(crypto.Keccak256(data), keys[0])
+	})
+
+	startBlock := ethBackend.BlockChain().CurrentBlock().Number.Uint64()
+	startTime := time.Now()
+
+	err = ethBackend.StartMining()
+	require.NoError(t, err)
+
+	testDuration := 60 * time.Second
+	time.Sleep(testDuration)
+
+	ethBackend.StopMining()
+
+	endBlock := ethBackend.BlockChain().CurrentBlock().Number.Uint64()
+	actualDuration := time.Since(startTime)
+
+	blocksMinedCount := endBlock - startBlock
+
+	expectedBlocks := float64(actualDuration.Seconds()) / customBlockTime.Seconds()
+
+	// Allow 5% tolerance for timing variations
+	tolerance := 0.05
+	minExpectedBlocks := uint64(expectedBlocks * (1 - tolerance))
+	maxExpectedBlocks := uint64(expectedBlocks * (1 + tolerance))
+
+	log.Info("Custom block time mining test results",
+		"startBlock", startBlock,
+		"endBlock", endBlock,
+		"blocksMinedCount", blocksMinedCount,
+		"duration", actualDuration,
+		"customBlockTime", customBlockTime,
+		"expectedBlocks", expectedBlocks,
+		"minExpected", minExpectedBlocks,
+		"maxExpected", maxExpectedBlocks)
+
+	require.GreaterOrEqual(t, blocksMinedCount, minExpectedBlocks,
+		fmt.Sprintf("Too few blocks mined. Expected at least %d, got %d", minExpectedBlocks, blocksMinedCount))
+	require.LessOrEqual(t, blocksMinedCount, maxExpectedBlocks,
+		fmt.Sprintf("Too many blocks mined. Expected at most %d, got %d", maxExpectedBlocks, blocksMinedCount))
 }

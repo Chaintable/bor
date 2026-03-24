@@ -3,7 +3,6 @@ package bor
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,7 +56,7 @@ const (
 	checkpointInterval = 1024            // Number of blocks after which to save the vote snapshot to the database
 	inmemorySnapshots  = 128             // Number of recent vote snapshots to keep in memory
 	inmemorySignatures = 4096            // Number of recent block signatures to keep in memory
-	veblopBlockTimeout = time.Second * 4 // Timeout for new span check. DO NOT CHANGE THIS VALUE.
+	veblopBlockTimeout = time.Second * 6 // Timeout for new span check. DO NOT CHANGE THIS VALUE.
 )
 
 // Bor protocol constants.
@@ -250,6 +249,11 @@ type Bor struct {
 	fakeDiff      bool // Skip difficulty verifications
 	DevFakeAuthor bool
 
+	// The block time defined by the miner. Needs to be larger or equal to the consensus block time. If not set (default = 0), the miner will use the consensus block time.
+	blockTime time.Duration
+
+	lastMinedBlockTime time.Time
+
 	quit      chan struct{}
 	closeOnce sync.Once
 
@@ -271,6 +275,7 @@ func New(
 	heimdallWSClient IHeimdallWSClient,
 	genesisContracts GenesisContract,
 	devFakeAuthor bool,
+	blockTime time.Duration,
 	tracer *balance_tracing.Hooks,
 ) *Bor {
 	// get bor config
@@ -312,6 +317,7 @@ func New(
 		HeimdallWSClient:       heimdallWSClient,
 		spanStore:              spanStore,
 		DevFakeAuthor:          devFakeAuthor,
+		blockTime:              blockTime,
 		quit:                   make(chan struct{}),
 		tracer:                 tracer,
 	}
@@ -991,7 +997,24 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header) e
 		}
 	}
 
-	header.Time = parent.Time + CalcProducerDelay(number, succession, c.config)
+	if c.blockTime > 0 && uint64(c.blockTime.Seconds()) < c.config.CalculatePeriod(number) {
+		return fmt.Errorf("the floor of custom mining block time (%v) is less than the consensus block time: %v < %v", c.blockTime, c.blockTime.Seconds(), c.config.CalculatePeriod(number))
+	}
+
+	if c.blockTime > 0 && c.config.IsRio(header.Number) {
+		// Only enable custom block time for Rio and later
+		parentActualTime := c.lastMinedBlockTime
+		if parentActualTime.IsZero() || parentActualTime.Before(time.Unix(int64(parent.Time), 0)) {
+			parentActualTime = time.Unix(int64(parent.Time), 0)
+		}
+		actualNewBlockTime := parentActualTime.Add(c.blockTime)
+		c.lastMinedBlockTime = actualNewBlockTime
+		header.Time = uint64(actualNewBlockTime.Unix())
+		header.ActualTime = actualNewBlockTime
+	} else {
+		header.Time = parent.Time + CalcProducerDelay(number, succession, c.config)
+	}
+
 	if header.Time < uint64(time.Now().Unix()) {
 		header.Time = uint64(time.Now().Unix())
 	} else {
@@ -1001,7 +1024,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header) e
 		// need a check for hard fork as it doesn't change any consensus rules, we
 		// still keep it for safety and testing.
 		if c.config.IsBhilai(big.NewInt(int64(number))) && succession == 0 {
-			startTime := time.Unix(int64(header.Time-c.config.CalculatePeriod(number)), 0)
+			startTime := header.GetActualTime().Add(-time.Duration(c.config.CalculatePeriod(number)) * time.Second)
 			time.Sleep(time.Until(startTime))
 		}
 	}
@@ -1011,13 +1034,13 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header) e
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, wrappedState vm.StateDB, body *types.Body) {
+func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, wrappedState vm.StateDB, body *types.Body, receipts []*types.Receipt) []*types.Receipt {
 	headerNumber := header.Number.Uint64()
 	if body.Withdrawals != nil || header.WithdrawalsHash != nil {
-		return
+		return nil
 	}
 	if header.RequestsHash != nil {
-		return
+		return nil
 	}
 
 	var (
@@ -1032,7 +1055,7 @@ func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, 
 		if !c.config.IsRio(header.Number) {
 			if err := c.checkAndCommitSpan(wrappedState, header, cx); err != nil {
 				log.Error("Error while committing span", "error", err)
-				return
+				return nil
 			}
 		}
 
@@ -1041,10 +1064,9 @@ func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, 
 			stateSyncData, err = c.CommitStates(wrappedState, header, cx)
 			if err != nil {
 				log.Error("Error while committing states", "error", err)
-				return
+				return nil
 			}
 		}
-
 		// Get the underlying state for updating consensus time
 		state := wrappedState.Inner()
 		state.BorConsensusTime = time.Since(start)
@@ -1055,12 +1077,60 @@ func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, 
 	// in tracing if it's enabled.
 	if err = c.changeContractCodeIfNeeded(headerNumber, wrappedState); err != nil {
 		log.Error("Error changing contract code", "error", err)
-		return
+		return nil
 	}
 
-	// Set state sync data to blockchain
-	hc := chain.(*core.HeaderChain)
-	hc.SetStateSync(stateSyncData)
+	if len(stateSyncData) > 0 && c.config != nil && c.config.IsMadhugiri(header.Number) {
+		if len(body.Transactions) > 0 {
+			lastTx := body.Transactions[len(body.Transactions)-1]
+			if lastTx.Type() == types.StateSyncTxType {
+				receipts = insertStateSyncTransactionAndCalculateReceipt(lastTx, header, body, wrappedState, receipts)
+			}
+		}
+	} else {
+		// set state sync
+		hc := chain.(*core.HeaderChain)
+		hc.SetStateSync(stateSyncData)
+	}
+	return receipts
+}
+
+func insertStateSyncTransactionAndCalculateReceipt(stateSyncTx *types.Transaction, header *types.Header, body *types.Body, state vm.StateDB, receipts []*types.Receipt) []*types.Receipt {
+	allLogs := state.Logs()
+	sort.SliceStable(allLogs, func(i, j int) bool {
+		return allLogs[i].Index < allLogs[j].Index
+	})
+	logsFromReceiptCount := countLogsFromReceipts(receipts)
+	stateSyncLogs := allLogs[logsFromReceiptCount:]
+
+	txIndex := uint(len(body.Transactions) - 1)
+	for _, l := range stateSyncLogs {
+		l.TxIndex = txIndex
+	}
+
+	var cumulativeGasUsed uint64
+	if len(receipts) > 0 {
+		cumulativeGasUsed = receipts[len(receipts)-1].CumulativeGasUsed
+	}
+
+	stateSyncReceipt := &types.Receipt{
+		// Consensus fields
+		Type:              types.StateSyncTxType,
+		Status:            types.ReceiptStatusSuccessful,
+		CumulativeGasUsed: cumulativeGasUsed,
+		Logs:              stateSyncLogs,
+		// Implementation fields
+		TxHash:  stateSyncTx.Hash(),
+		GasUsed: 0,
+		// Inclusion information
+		BlockNumber:      header.Number,
+		TransactionIndex: txIndex,
+	}
+
+	stateSyncReceipt.Bloom = types.CreateBloom(stateSyncReceipt)
+	receipts = append(receipts, stateSyncReceipt)
+
+	return receipts
 }
 
 func decodeGenesisAlloc(i interface{}) (types.GenesisAlloc, error) {
@@ -1103,13 +1173,13 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state vm.StateDB) 
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, error) {
+func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
 	headerNumber := header.Number.Uint64()
 	if body.Withdrawals != nil || header.WithdrawalsHash != nil {
-		return nil, consensus.ErrUnexpectedWithdrawals
+		return nil, nil, consensus.ErrUnexpectedWithdrawals
 	}
 	if header.RequestsHash != nil {
-		return nil, consensus.ErrUnexpectedRequests
+		return nil, nil, consensus.ErrUnexpectedRequests
 	}
 
 	var (
@@ -1124,7 +1194,7 @@ func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *typ
 		if !c.config.IsRio(header.Number) {
 			if err = c.checkAndCommitSpan(state, header, cx); err != nil {
 				log.Error("Error while committing span", "error", err)
-				return nil, err
+				return nil, nil, err
 			}
 		}
 
@@ -1133,14 +1203,14 @@ func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *typ
 			stateSyncData, err = c.CommitStates(state, header, cx)
 			if err != nil {
 				log.Error("Error while committing states", "error", err)
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
 
 	if err = c.changeContractCodeIfNeeded(headerNumber, state); err != nil {
 		log.Error("Error changing contract code", "error", err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	// No block rewards in PoA, so the state remains as it is
@@ -1149,15 +1219,23 @@ func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *typ
 	// Uncles are dropped
 	header.UncleHash = types.CalcUncleHash(nil)
 
+	if len(stateSyncData) > 0 && c.config != nil && c.config.IsMadhugiri(big.NewInt(int64(headerNumber))) {
+		stateSyncTx := types.NewTx(&types.StateSyncTx{
+			StateSyncData: stateSyncData,
+		})
+		body.Transactions = append(body.Transactions, stateSyncTx)
+		receipts = insertStateSyncTransactionAndCalculateReceipt(stateSyncTx, header, body, state, receipts)
+	} else {
+		// set state sync
+		bc := chain.(core.BorStateSyncer)
+		bc.SetStateSync(stateSyncData)
+	}
+
 	// Assemble block
 	block := types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
 
-	// set state sync
-	bc := chain.(core.BorStateSyncer)
-	bc.SetStateSync(stateSyncData)
-
 	// return the final block for sealing
-	return block, nil
+	return block, receipts, nil
 }
 
 // Authorize injects a private key into the consensus engine to mint new blocks
@@ -1207,14 +1285,15 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, witnes
 
 	// Sweet, the protocol permits us to sign the block, wait for our time
 	if c.config.IsBhilai(header.Number) {
-		delay = time.Until(time.Unix(int64(header.Time), 0)) // Wait until we reach header time for non-primary validators
-		if successionNumber == 0 {
-			// For primary producers, set the delay to `header.Time - block time` instead of `header.Time`
-			// for early block announcement instead of waiting for full block time.
-			delay = time.Until(time.Unix(int64(header.Time-c.config.CalculatePeriod(number)), 0))
-		}
+		delay = time.Until(header.GetActualTime()) // Wait until we reach header time for non-primary validators
+		// Disable early block announcement
+		// if successionNumber == 0 {
+		// 	// For primary producers, set the delay to `header.Time - block time` instead of `header.Time`
+		// 	// for early block announcement instead of waiting for full block time.
+		// 	delay = time.Until(time.Unix(int64(header.Time-c.config.CalculatePeriod(number)), 0))
+		// }
 	} else {
-		delay = time.Until(time.Unix(int64(header.Time), 0)) // Wait until we reach header time
+		delay = time.Until(header.GetActualTime()) // Wait until we reach header time
 	}
 
 	// wiggle was already accounted for in header.Time, this is just for logging
@@ -1609,7 +1688,7 @@ func (c *Bor) CommitStates(
 		stateData := types.StateSyncData{
 			ID:       eventRecord.ID,
 			Contract: eventRecord.Contract,
-			Data:     hex.EncodeToString(eventRecord.Data),
+			Data:     eventRecord.Data,
 			TxHash:   eventRecord.TxHash,
 		}
 
@@ -1741,4 +1820,14 @@ func getUpdatedValidatorSet(oldValidatorSet *valset.ValidatorSet, newVals []*val
 
 func IsSprintStart(number, sprint uint64) bool {
 	return number%sprint == 0
+}
+
+func countLogsFromReceipts(receipts []*types.Receipt) int {
+	total := 0
+	for _, receipt := range receipts {
+		if receipt != nil {
+			total += len(receipt.Logs)
+		}
+	}
+	return total
 }

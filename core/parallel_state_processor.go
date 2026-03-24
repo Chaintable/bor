@@ -69,6 +69,7 @@ type ExecutionTask struct {
 	gasLimit                   uint64
 	blockNumber                *big.Int
 	blockHash                  common.Hash
+	blockTime                  uint64
 	tx                         *types.Transaction
 	index                      int
 	statedb                    *state.StateDB // State database that stores the modified values after tx execution.
@@ -183,7 +184,7 @@ func (task *ExecutionTask) Settle() {
 
 	task.finalStateDB.ApplyMVWriteSet(task.statedb.MVFullWriteList())
 
-	for _, l := range task.statedb.GetLogs(task.tx.Hash(), task.blockNumber.Uint64(), task.blockHash) {
+	for _, l := range task.statedb.GetLogs(task.tx.Hash(), task.blockNumber.Uint64(), task.blockHash, task.blockTime) {
 		task.finalStateDB.AddLog(l)
 	}
 
@@ -245,7 +246,7 @@ func (task *ExecutionTask) Settle() {
 	}
 
 	// Set the receipt logs and create the bloom filter.
-	receipt.Logs = task.finalStateDB.GetLogs(task.tx.Hash(), task.blockNumber.Uint64(), task.blockHash)
+	receipt.Logs = task.finalStateDB.GetLogs(task.tx.Hash(), task.blockNumber.Uint64(), task.blockHash, task.blockTime)
 	receipt.Bloom = types.CreateBloom(receipt)
 	receipt.BlockHash = task.blockHash
 	receipt.BlockNumber = task.blockNumber
@@ -279,6 +280,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 		header      = block.Header()
 		blockHash   = block.Hash()
 		blockNumber = block.Number()
+		blockTime   = block.Time()
 		allLogs     []*types.Log
 		usedGas     = new(uint64)
 		metadata    bool
@@ -327,6 +329,9 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	}
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
+		if tx.Type() == types.StateSyncTxType {
+			continue
+		}
 		msg, err := TransactionToMessage(tx, types.MakeSigner(p.config, header.Number, header.Time), header.BaseFee)
 		if err != nil {
 			log.Error("error creating message", "err", err)
@@ -345,6 +350,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 			gasLimit:          block.GasLimit(),
 			blockNumber:       blockNumber,
 			blockHash:         blockHash,
+			blockTime:         blockTime,
 			tx:                tx,
 			index:             i,
 			cleanStateDB:      cleansdb,
@@ -416,7 +422,17 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	var requests [][]byte
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	p.engine.Finalize(p.bc.hc, header, statedb, block.Body())
+	receiptsCountBeforeFinalize := len(receipts)
+	receipts = p.engine.Finalize(p.bc.hc, header, statedb, block.Body(), receipts)
+
+	// apply state sync logs
+	if p.config.Bor != nil && p.config.Bor.IsMadhugiri(block.Number()) {
+		appliedNewStateSyncReceipt := receiptsCountBeforeFinalize+1 == len(receipts)
+
+		if appliedNewStateSyncReceipt {
+			allLogs = append(allLogs, receipts[len(receipts)-1].Logs...)
+		}
+	}
 
 	return &ProcessResult{
 		Receipts: receipts,

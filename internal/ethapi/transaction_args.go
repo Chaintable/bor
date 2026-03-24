@@ -391,18 +391,7 @@ func (args *TransactionArgs) CallDefaults(globalGasCap uint64, baseFee *big.Int,
 		}
 		args.Gas = (*hexutil.Uint64)(&gas)
 	} else {
-		// Gas set for system calls
-		systemCallGas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
-
-		gas := globalGasCap
-		if gas == 0 {
-			gas = uint64(math.MaxUint64 / 2)
-		}
-		if args.Gas != nil && *args.Gas != systemCallGas {
-			gas = uint64(*args.Gas)
-		}
-
-		if globalGasCap > 0 && globalGasCap < gas {
+		if globalGasCap > 0 && globalGasCap < uint64(*args.Gas) {
 			log.Warn("Caller gas above allowance, capping", "requested", args.Gas, "cap", globalGasCap)
 			args.Gas = (*hexutil.Uint64)(&globalGasCap)
 		}
@@ -438,7 +427,7 @@ func (args *TransactionArgs) CallDefaults(globalGasCap uint64, baseFee *big.Int,
 // core evm. This method is used in calls and traces that do not require a real
 // live transaction.
 // Assumes that fields are not nil, i.e. setDefaults or CallDefaults has been called.
-func (args *TransactionArgs) ToMessage(baseFee *big.Int, skipNonceCheck, skipEoACheck bool) *core.Message {
+func (args *TransactionArgs) ToMessage(baseFee *big.Int, skipNonceCheck bool) *core.Message {
 	var (
 		gasPrice  *big.Int
 		gasFeeCap *big.Int
@@ -488,7 +477,7 @@ func (args *TransactionArgs) ToMessage(baseFee *big.Int, skipNonceCheck, skipEoA
 		BlobHashes:            args.BlobHashes,
 		SetCodeAuthorizations: args.AuthorizationList,
 		SkipNonceChecks:       skipNonceCheck,
-		SkipFromEOACheck:      skipEoACheck,
+		SkipTransactionChecks: true,
 	}
 }
 

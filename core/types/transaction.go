@@ -50,6 +50,7 @@ const (
 	DynamicFeeTxType = 0x02
 	BlobTxType       = 0x03
 	SetCodeTxType    = 0x04
+	StateSyncTxType  = 0x7f
 )
 
 // Transaction is an Ethereum transaction.
@@ -226,6 +227,8 @@ func (tx *Transaction) decodeTyped(b []byte) (TxData, error) {
 		inner = new(BlobTx)
 	case SetCodeTxType:
 		inner = new(SetCodeTx)
+	case StateSyncTxType:
+		inner = new(StateSyncTx)
 	default:
 		return nil, ErrTxTypeNotSupported
 	}
@@ -370,28 +373,35 @@ func (tx *Transaction) GasTipCapIntCmp(other *big.Int) int {
 // Note: if the effective gasTipCap is negative, this method returns both error
 // the actual negative value, _and_ ErrGasFeeCapTooLow
 func (tx *Transaction) EffectiveGasTip(baseFee *big.Int) (*big.Int, error) {
-	if baseFee == nil {
-		return tx.GasTipCap(), nil
+	dst := new(big.Int)
+	if tx.Type() == StateSyncTxType {
+		dst = big.NewInt(0)
+		return dst, nil
 	}
+	err := tx.calcEffectiveGasTip(dst, baseFee)
+	return dst, err
+}
+
+// calcEffectiveGasTip calculates the effective gas tip of the transaction and
+// saves the result to dst.
+func (tx *Transaction) calcEffectiveGasTip(dst *big.Int, baseFee *big.Int) error {
+	if baseFee == nil {
+		dst.Set(tx.inner.gasTipCap())
+		return nil
+	}
+
 	var err error
-	gasFeeCap := tx.GasFeeCap()
+	gasFeeCap := tx.inner.gasFeeCap()
 	if gasFeeCap.Cmp(baseFee) < 0 {
 		err = ErrGasFeeCapTooLow
 	}
-	gasFeeCap = gasFeeCap.Sub(gasFeeCap, baseFee)
 
-	gasTipCap := tx.GasTipCap()
-	if gasTipCap.Cmp(gasFeeCap) < 0 {
-		return gasTipCap, err
+	dst.Sub(gasFeeCap, baseFee)
+	gasTipCap := tx.inner.gasTipCap()
+	if gasTipCap.Cmp(dst) < 0 {
+		dst.Set(gasTipCap)
 	}
-	return gasFeeCap, err
-}
-
-// EffectiveGasTipValue is identical to EffectiveGasTip, but does not return an
-// error in case the effective gasTipCap is negative
-func (tx *Transaction) EffectiveGasTipValue(baseFee *big.Int) *big.Int {
-	effectiveTip, _ := tx.EffectiveGasTip(baseFee)
-	return effectiveTip
+	return err
 }
 
 // EffectiveGasTipCmp compares the effective gasTipCap of two transactions assuming the given base fee.
@@ -399,7 +409,11 @@ func (tx *Transaction) EffectiveGasTipCmp(other *Transaction, baseFee *big.Int) 
 	if baseFee == nil {
 		return tx.GasTipCapCmp(other)
 	}
-	return tx.EffectiveGasTipValue(baseFee).Cmp(other.EffectiveGasTipValue(baseFee))
+	// Use more efficient internal method.
+	txTip, otherTip := new(big.Int), new(big.Int)
+	tx.calcEffectiveGasTip(txTip, baseFee)
+	other.calcEffectiveGasTip(otherTip, baseFee)
+	return txTip.Cmp(otherTip)
 }
 
 // EffectiveGasTipIntCmp compares the effective gasTipCap of a transaction to the given gasTipCap.
@@ -407,7 +421,9 @@ func (tx *Transaction) EffectiveGasTipIntCmp(other *big.Int, baseFee *big.Int) i
 	if baseFee == nil {
 		return tx.GasTipCapIntCmp(other)
 	}
-	return tx.EffectiveGasTipValue(baseFee).Cmp(other)
+	txTip := new(big.Int)
+	tx.calcEffectiveGasTip(txTip, baseFee)
+	return txTip.Cmp(other)
 }
 
 // BlobGas returns the blob gas limit of the transaction for blob transactions, 0 otherwise.
@@ -546,6 +562,13 @@ func (tx *Transaction) Hash() common.Hash {
 	var h common.Hash
 	if tx.Type() == LegacyTxType {
 		h = rlpHash(tx.inner)
+	} else if tx.Type() == StateSyncTxType {
+		// StateSyncTx hash must be computed from the payload ([]StateSyncData), not the wrapper struct.
+		// This matches the MarshalBinary encoding used in EncodeIndex for transactionsRoot.
+		// Using prefixedRlpHash(type, inner) would encode the StateSyncTx struct instead of
+		// the array, producing a different hash than the canonical encoding.
+		stateSyncTx := tx.inner.(*StateSyncTx)
+		h = prefixedRlpHash(tx.Type(), stateSyncTx.StateSyncData)
 	} else {
 		h = prefixedRlpHash(tx.Type(), tx.inner)
 	}

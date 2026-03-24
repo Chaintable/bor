@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // TenToTheFive - To be used while sorting bor logs
@@ -45,8 +46,10 @@ func NewBorTransactionWithGasLimit(gasLimit uint64) *Transaction {
 
 // DeriveFieldsForBorReceipt fills the receipts with their computed fields based on consensus
 // data and contextual infos like containing block and transactions.
-func DeriveFieldsForBorReceipt(receipt *Receipt, hash common.Hash, number uint64, receipts Receipts) error {
+func DeriveFieldsForBorReceipt(receipt *Receipt, receipts Receipts, header *Header) error {
 	// get derived tx hash
+	number := header.Number.Uint64()
+	hash := header.Hash()
 	txHash := GetDerivedBorTxHash(BorReceiptKey(number, hash))
 	txIndex := uint(len(receipts))
 
@@ -61,15 +64,23 @@ func DeriveFieldsForBorReceipt(receipt *Receipt, hash common.Hash, number uint64
 		logIndex += len(receipts[i].Logs)
 	}
 
+	if len(receipts) > 0 {
+		receipt.CumulativeGasUsed = receipts[len(receipts)-1].CumulativeGasUsed
+	}
+
 	// The derived log fields can simply be set from the block and transaction
 	for j := 0; j < len(receipt.Logs); j++ {
 		receipt.Logs[j].BlockNumber = number
 		receipt.Logs[j].BlockHash = hash
+		receipt.Logs[j].BlockTimestamp = header.Time
 		receipt.Logs[j].TxHash = txHash
 		receipt.Logs[j].TxIndex = txIndex
 		receipt.Logs[j].Index = uint(logIndex)
 		logIndex++
 	}
+
+	// Also derive the Bloom if not derived yet
+	receipt.Bloom = CreateBloom(receipt)
 
 	return nil
 }
@@ -100,4 +111,14 @@ func MergeBorLogs(logs []*Log, borLogs []*Log) []*Log {
 	})
 
 	return result
+}
+
+func IsSprintEndBlock(borCfg *params.BorConfig, number uint64) bool {
+	if borCfg == nil {
+		return false
+	}
+	if number%borCfg.CalculateSprint(number) == 0 {
+		return true
+	}
+	return false
 }
