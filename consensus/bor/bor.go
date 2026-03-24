@@ -271,7 +271,7 @@ type Bor struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
-	tracer *balance_tracing.Hooks
+	tracer *tracing.Hooks
 }
 
 type signer struct {
@@ -290,7 +290,7 @@ func New(
 	genesisContracts GenesisContract,
 	devFakeAuthor bool,
 	blockTime time.Duration,
-	tracer *balance_tracing.Hooks,
+	tracer *tracing.Hooks,
 ) *Bor {
 	// get bor config
 	borConfig := chainConfig.Bor
