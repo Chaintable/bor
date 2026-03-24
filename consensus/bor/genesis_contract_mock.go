@@ -41,7 +41,7 @@ func (m *MockGenesisContract) EXPECT() *MockGenesisContractMockRecorder {
 }
 
 // CommitState mocks base method.
-func (m *MockGenesisContract) CommitState(arg0 *clerk.EventRecordWithTime, arg1 vm.StateDB, arg2 *types.Header, arg3 statefull.ChainContext) (uint64, error) {
+func (m *MockGenesisContract) CommitState(arg0 *clerk.EventRecordWithTime, arg1 vm.StateDB, arg2 *types.Header, arg3 statefull.ChainContext, _ *vm.Config) (uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CommitState", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(uint64)
