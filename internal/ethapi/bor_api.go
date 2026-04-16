@@ -927,6 +927,10 @@ func (api *BorAPI) GetLogs(ctx context.Context, crit FilterCriteria) ([]*types.L
 
 	// Iterate blocks from the beginning to the end
 	for blockNum := begin; blockNum <= end; blockNum++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		block, receipts, err := api.getBlockAndReceipts(ctx, blockNum)
 		if err != nil {
 			return nil, err
@@ -1020,6 +1024,10 @@ func (api *BorAPI) GetLatestLogs(ctx context.Context, crit FilterCriteria, logOp
 
 	// Iterate blocks from the end to the beginning
 	for blockNum := end; blockNum >= begin && blockNum <= end; blockNum-- {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		// Check the block count limit
 		if blockCount > 0 && blocksScanned >= blockCount {
 			break

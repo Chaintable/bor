@@ -2270,6 +2270,23 @@ func (b *testBackendWithProtocolVersion) ProtocolVersion() uint {
 	return b.protocolVersion
 }
 
+type testBackendWithCancelAfterFirstBlockLookup struct {
+	*testBackend
+	cancel      context.CancelFunc
+	lookupCount int
+}
+
+func (b *testBackendWithCancelAfterFirstBlockLookup) BlockByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Block, error) {
+	block, err := b.testBackend.BlockByNumber(ctx, number)
+	if number >= 0 {
+		b.lookupCount++
+		if b.lookupCount == 1 {
+			b.cancel()
+		}
+	}
+	return block, err
+}
+
 func TestBorGetLatestLogs(t *testing.T) {
 	t.Parallel()
 
@@ -3160,6 +3177,56 @@ func TestGetLogsBlockRangeLimit(t *testing.T) {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
+}
+
+func TestGetLogsRespectsContextCancellationDuringScan(t *testing.T) {
+	t.Parallel()
+
+	genesis := &core.Genesis{
+		Config: params.AllEthashProtocolChanges,
+		Alloc:  types.GenesisAlloc{},
+	}
+	base := newTestBackend(t, 10, genesis, ethash.NewFaker(), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	backend := &testBackendWithCancelAfterFirstBlockLookup{
+		testBackend: base,
+		cancel:      cancel,
+	}
+	api := NewBorAPI(backend)
+
+	crit := FilterCriteria{
+		FromBlock: big.NewInt(0),
+		ToBlock:   big.NewInt(10),
+	}
+
+	_, err := api.GetLogs(ctx, crit)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestGetLatestLogsRespectsContextCancellationDuringScan(t *testing.T) {
+	t.Parallel()
+
+	genesis := &core.Genesis{
+		Config: params.AllEthashProtocolChanges,
+		Alloc:  types.GenesisAlloc{},
+	}
+	base := newTestBackend(t, 10, genesis, ethash.NewFaker(), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	backend := &testBackendWithCancelAfterFirstBlockLookup{
+		testBackend: base,
+		cancel:      cancel,
+	}
+	api := NewBorAPI(backend)
+
+	crit := FilterCriteria{
+		FromBlock: big.NewInt(0),
+		ToBlock:   big.NewInt(10),
+	}
+	blockCount := uint64(10)
+	opts := LogFilterOptions{BlockCount: &blockCount}
+
+	_, err := api.GetLatestLogs(ctx, crit, opts)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 // TestGetLogsLogCopySafety verifies that returned logs are copies,
