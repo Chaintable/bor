@@ -913,10 +913,9 @@ func doCall(ctx context.Context, b Backend, args TransactionArgs, state *state.S
 	// this makes sure resources are cleaned up.
 	defer cancel()
 
-	// Note: Don't put a cap on gas if it's a system tx (coming from bor consensus). The
-	// easiest way to enforce this is to set globalGasCap for this call to 0 which will
-	// use the max possible limit.
-	if isBorSystemTx(b.ChainConfig().Bor, args.To) {
+	// Only bypass the RPC gas cap for system contract calls that originate from
+	// internal consensus code (marked via WithBorInternalCall ctx).
+	if isBorInternalCall(ctx) && isBorSystemTx(b.ChainConfig().Bor, args.To) {
 		globalGasCap = 0
 	}
 	gp := new(core.GasPool)

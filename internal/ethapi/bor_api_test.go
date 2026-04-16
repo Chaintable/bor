@@ -31,12 +31,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/ethapi/override"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -4185,4 +4187,82 @@ func TestGetBlockByNumber_BorExtraFlag_PreCancun(t *testing.T) {
 	require.NotNil(t, result)
 	_, ok := result["decodedExtra"]
 	require.False(t, ok, "decodedExtra should not be present for pre-Cancun blocks")
+}
+
+// TestSystemTxGasCapBypass verifies that the RPC gas cap is only bypassed for
+// internal consensus calls. No external RPC call should be able to bypass it.
+func TestSystemTxGasCapBypass(t *testing.T) {
+	t.Parallel()
+
+	// Bytecode that returns the gas available to the call.
+	// GAS PUSH1(0) MSTORE PUSH1(32) PUSH1(0) RETURN
+	gasReportBytes := hexutil.Bytes(common.FromHex("5a60005260206000f3"))
+	gasReportCode := &gasReportBytes
+
+	systemAddr := common.HexToAddress("0x0000000000000000000000000000000000001000")
+	normalAddr := common.HexToAddress("0x0000000000000000000000000000000000009999")
+
+	genesis := &core.Genesis{
+		Config: params.MergedTestChainConfig,
+		Alloc:  types.GenesisAlloc{},
+	}
+	api := NewBlockChainAPI(newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
+		b.SetPoS()
+	}))
+
+	latest := rpc.LatestBlockNumber
+	rpcGasCap := api.b.RPCGasCap()
+	tests := []struct {
+		name       string
+		internal   bool
+		to         common.Address
+		wantCapped bool
+	}{
+		{
+			name:       "external RPC to system contract must be gas-capped",
+			internal:   false,
+			to:         systemAddr,
+			wantCapped: true,
+		},
+		{
+			name:       "internal consensus call to system contract bypasses gas cap",
+			internal:   true,
+			to:         systemAddr,
+			wantCapped: false,
+		},
+		{
+			name:       "external RPC to normal address is gas-capped",
+			internal:   false,
+			to:         normalAddr,
+			wantCapped: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			if tt.internal {
+				ctx = WithBorInternalCall(ctx)
+			}
+
+			blockNr := rpc.BlockNumberOrHashWithNumber(latest)
+			result, err := api.Call(ctx, TransactionArgs{
+				To: &tt.to,
+			}, &blockNr, &override.StateOverride{
+				tt.to: override.OverrideAccount{
+					Code: gasReportCode,
+				},
+			}, nil)
+			require.NoError(t, err)
+
+			gasAvailable := new(big.Int).SetBytes(result)
+			if tt.wantCapped {
+				require.True(t, gasAvailable.Uint64() <= rpcGasCap,
+					"gas should be capped to RPCGasCap (%d), got %s", rpcGasCap, gasAvailable)
+			} else {
+				require.True(t, gasAvailable.Uint64() > rpcGasCap,
+					"gas should bypass RPCGasCap (%d), got %s", rpcGasCap, gasAvailable)
+			}
+		})
+	}
 }
