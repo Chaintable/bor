@@ -13,7 +13,12 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 )
 
-var totalPrivateTxsMeter = metrics.NewRegisteredMeter("privatetxs/count", nil)
+const (
+	privateTxGracePeriod = 2 * time.Minute // min age before txpool presence check applies
+	sweepInterval        = 1 * time.Minute // how often the sweep goroutine runs
+)
+
+var privateTxStoreSizeGauge = metrics.NewRegisteredGauge("relay/privatetx/store/size", nil)
 
 type PrivateTxGetter interface {
 	IsTxPrivate(hash common.Hash) bool
@@ -24,16 +29,21 @@ type PrivateTxSetter interface {
 	Purge(hash common.Hash)
 }
 
+// TxPoolChecker returns true if the given tx hash is currently in the txpool.
+type TxPoolChecker func(hash common.Hash) bool
+
 type PrivateTxStore struct {
 	txs map[common.Hash]time.Time // tx hash to last updated time
 	mu  sync.RWMutex
 
 	chainEventSubFn func(ch chan<- core.ChainEvent) event.Subscription
+	txPoolChecker   TxPoolChecker
 
 	// metrics
 	txsAdded   atomic.Uint64
 	txsPurged  atomic.Uint64 // deleted by an explicit call
 	txsDeleted atomic.Uint64 // deleted because tx got included
+	txsExpired atomic.Uint64 // deleted by sweep (txpool eviction or TTL)
 
 	closeCh chan struct{}
 }
@@ -44,6 +54,7 @@ func NewPrivateTxStore() *PrivateTxStore {
 		closeCh: make(chan struct{}),
 	}
 	go store.report()
+	go store.sweep()
 	return store
 }
 
@@ -126,6 +137,77 @@ func (s *PrivateTxStore) SetchainEventSubFn(fn func(ch chan<- core.ChainEvent) e
 	}
 }
 
+func (s *PrivateTxStore) SetTxPoolChecker(checker TxPoolChecker) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.txPoolChecker = checker
+}
+
+// sweep periodically removes stale entries from the store. An entry is removed
+// once it has been in the store longer than privateTxGracePeriod and is no
+// longer present in the local txpool — the txpool's own eviction is treated as
+// the source of truth.
+func (s *PrivateTxStore) sweep() {
+	ticker := time.NewTicker(sweepInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.sweepOnce()
+		case <-s.closeCh:
+			return
+		}
+	}
+}
+
+// sweepOnce performs one pass of the sweep logic. Extracted from sweep so tests
+// can invoke the real eviction logic deterministically without waiting on a ticker.
+// The work is performed in three phases to minimise lock contention.
+func (s *PrivateTxStore) sweepOnce() {
+	type entry struct {
+		hash    common.Hash
+		addedAt time.Time
+	}
+
+	// Snapshot under the read lock.
+	s.mu.RLock()
+	entries := make([]entry, 0, len(s.txs))
+	for h, t := range s.txs {
+		entries = append(entries, entry{h, t})
+	}
+	s.mu.RUnlock()
+
+	// Filter transactions without holding lock. An entry is removed only if the
+	// txpool no longer holds it and the grace period has elapsed.
+	now := time.Now()
+	toDelete := make([]entry, 0)
+	for _, entry := range entries {
+		age := now.Sub(entry.addedAt)
+		if age > privateTxGracePeriod && s.txPoolChecker != nil && !s.txPoolChecker(entry.hash) {
+			toDelete = append(toDelete, entry)
+		}
+	}
+	if len(toDelete) == 0 {
+		return
+	}
+
+	// Delete the entries under write lock. Only delete those whose `addedAt` time
+	// hasn't changed as it's possible that the tx was re-added to the pool after
+	// snapshot was taken.
+	expired := uint64(0)
+	s.mu.Lock()
+	for _, entry := range toDelete {
+		if cur, ok := s.txs[entry.hash]; ok && cur.Equal(entry.addedAt) {
+			delete(s.txs, entry.hash)
+			expired++
+		}
+	}
+	s.mu.Unlock()
+	s.txsExpired.Add(expired)
+}
+
 func (s *PrivateTxStore) report() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -136,11 +218,12 @@ func (s *PrivateTxStore) report() {
 			s.mu.RLock()
 			storeSize := len(s.txs)
 			s.mu.RUnlock()
-			totalPrivateTxsMeter.Mark(int64(storeSize))
-			log.Info("[private-tx-store] stats", "len", storeSize, "added", s.txsAdded.Load(), "purged", s.txsPurged.Load(), "deleted", s.txsDeleted.Load())
+			privateTxStoreSizeGauge.Update(int64(storeSize))
+			log.Info("[private-tx-store] stats", "len", storeSize, "added", s.txsAdded.Load(), "purged", s.txsPurged.Load(), "deleted", s.txsDeleted.Load(), "expired", s.txsExpired.Load())
 			s.txsAdded.Store(0)
 			s.txsPurged.Store(0)
 			s.txsDeleted.Store(0)
+			s.txsExpired.Store(0)
 		case <-s.closeCh:
 			return
 		}
