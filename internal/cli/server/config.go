@@ -175,9 +175,6 @@ type Config struct {
 
 	// Relay has transaction relay related settings
 	Relay *RelayConfig `hcl:"relay,block" toml:"relay,block"`
-
-	// VmTrace has the vm trace related settings
-	VmTrace VmTraceConfig `hcl:"vmtrace,optional" toml:"vmtrace,optional"`
 }
 
 type HistoryConfig struct {
@@ -808,11 +805,6 @@ type RelayConfig struct {
 
 	// BlockProducerRpcEndpoints is a list of block producer rpc endpoints to submit transactions to
 	BlockProducerRpcEndpoints []string `hcl:"bp-rpc-endpoints,optional" toml:"bp-rpc-endpoints,optional"`
-}
-
-type VmTraceConfig struct {
-	Type       string `hcl:"type,optional" toml:"type,optional"`
-	JSONConfig string `hcl:"jsonconfig,optional" toml:"jsonconfig,optional"`
 }
 
 func DefaultConfig() *Config {
@@ -1708,11 +1700,6 @@ func (c *Config) buildEth(stack *node.Node, accountManager *accounts.Manager) (*
 	n.AcceptPreconfTx = c.JsonRPC.AcceptPreconfTx
 	n.AcceptPrivateTx = c.JsonRPC.AcceptPrivateTx
 
-	// vmtrace
-	{
-		n.VMTrace = c.VmTrace.Type
-		n.VMTraceJsonConfig = c.VmTrace.JSONConfig
-	}
 	return &n, nil
 }
 
