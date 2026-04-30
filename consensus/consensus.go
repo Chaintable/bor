@@ -84,14 +84,14 @@ type Engine interface {
 
 	// Prepare initializes the consensus fields of a block header according to the
 	// rules of a particular engine. The changes are executed inline.
-	Prepare(chain ChainHeaderReader, header *types.Header) error
+	Prepare(chain ChainHeaderReader, header *types.Header, waitOnPrepare bool) error
 
 	// Finalize runs any post-transaction state modifications (e.g. block rewards
 	// or process withdrawals) but does not assemble the block.
 	//
 	// Note: The state database might be updated to reflect any consensus rules
 	// that happen at finalization (e.g. block rewards).
-	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, receipts []*types.Receipt) []*types.Receipt
+	Finalize(chain ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, receipts []*types.Receipt) ([]*types.Receipt, error)
 
 	// FinalizeAndAssemble runs any post-transaction state modifications (e.g. block
 	// rewards or process withdrawals) and assembles the final block.

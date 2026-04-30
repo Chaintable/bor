@@ -711,7 +711,7 @@ func TestFetchStateSyncEvents_2(t *testing.T) {
 			// stored in cache, we're updating the underlying pointer here and hence we don't need to update the cache.
 			span0.ValidatorSet.Validators = currentValidators
 		} else {
-			currentValidators = []*stakeTypes.Validator{&stakeTypes.Validator{
+			currentValidators = []*stakeTypes.Validator{{
 				Signer:      addr.String(),
 				VotingPower: 10,
 			}}
@@ -2137,7 +2137,7 @@ func TestInvalidStateSyncInBlockBody(t *testing.T) {
 	createMaliciousBlock := func(block *types.Block, receipts []*types.Receipt) *types.Block {
 		maliciousBody := &types.Body{
 			Transactions: []*types.Transaction{types.NewTx(&types.StateSyncTx{
-				StateSyncData: []*types.StateSyncData{&types.StateSyncData{
+				StateSyncData: []*types.StateSyncData{{
 					ID:       1,
 					Contract: common.HexToAddress("0x0000000000000000000000000000000000001000"),
 					Data:     []byte{0x01, 0x02, 0x03},
@@ -2157,7 +2157,7 @@ func TestInvalidStateSyncInBlockBody(t *testing.T) {
 	// shouldn't be applied and an error should be returned while inserting the block.
 	_, err := chain.InsertChain([]*types.Block{block}, false)
 	require.Error(t, err, "insert chain successed for block with invalid state-sync tx in body")
-	require.ErrorIs(t, err, core.ErrStateSyncProcessing, "received incorrect error for invalid state-sync tx in block body")
+	require.ErrorIs(t, err, core.ErrStateSyncMismatch, "received incorrect error for invalid state-sync tx in block body")
 }
 
 // TestDynamicGasLimit_LowBaseFee tests that when base fee is below the target-buffer,

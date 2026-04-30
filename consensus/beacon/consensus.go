@@ -336,21 +336,21 @@ func (beacon *Beacon) verifyHeaders(chain consensus.ChainHeaderReader, headers [
 
 // Prepare implements consensus.Engine, initializing the difficulty field of a
 // header to conform to the beacon protocol. The changes are done inline.
-func (beacon *Beacon) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
+func (beacon *Beacon) Prepare(chain consensus.ChainHeaderReader, header *types.Header, waitOnPrepare bool) error {
 	// Transition isn't triggered yet, use the legacy rules for preparation.
 	reached, err := IsTTDReached(chain, header.ParentHash, header.Number.Uint64()-1)
 	if err != nil {
 		return err
 	}
 	if !reached {
-		return beacon.ethone.Prepare(chain, header)
+		return beacon.ethone.Prepare(chain, header, waitOnPrepare)
 	}
 	header.Difficulty = beaconDifficulty
 	return nil
 }
 
 // Finalize implements consensus.Engine and processes withdrawals on top.
-func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, receipts []*types.Receipt) []*types.Receipt {
+func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, body *types.Body, receipts []*types.Receipt) ([]*types.Receipt, error) {
 	if !beacon.IsPoSHeader(header) {
 		return beacon.ethone.Finalize(chain, header, state, body, receipts)
 	}
@@ -362,7 +362,7 @@ func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.
 		state.AddBalance(w.Address, amount, tracing.BalanceIncreaseWithdrawal)
 	}
 	// No block reward which is issued by consensus layer instead.
-	return receipts
+	return receipts, nil
 }
 
 // FinalizeAndAssemble implements consensus.Engine, setting the final state and
@@ -384,7 +384,10 @@ func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, hea
 		}
 	}
 	// Finalize and assemble the block.
-	receipts = beacon.Finalize(chain, header, state, body, receipts)
+	receipts, err := beacon.Finalize(chain, header, state, body, receipts)
+	if err != nil {
+		return nil, nil, 0, err
+	}
 
 	// Assign the final state root to header.
 	start := time.Now()

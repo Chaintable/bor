@@ -16,6 +16,8 @@
 
 package vm
 
+//go:generate go run ./gen_dispatch/
+
 import (
 	"errors"
 	"fmt"
@@ -41,6 +43,7 @@ type Config struct {
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 	EnableWitnessStats      bool // Whether trie access statistics collection is enabled
+	EnableEVMSwitchDispatch bool // Use switch-based fast path interpreter
 }
 
 // ScopeContext contains the things that are per-call, such as stack and memory,
@@ -102,9 +105,10 @@ func (ctx *ScopeContext) ContractCode() []byte {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 // nolint:gocognit
-func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool, interrupt *atomic.Bool) (ret []byte, err error) {
-	// If `interrupt` is nil (which can be the case for some tests), set it to false to avoid
-	// checking it for every opcode.
+func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
+	// Use the EVM-level interrupt flag set via SetInterrupt. If nil (tests or
+	// non-mining contexts), use a dummy to avoid checking nil on every opcode.
+	interrupt := evm.interrupt
 	if interrupt == nil {
 		interrupt = new(atomic.Bool)
 	}
@@ -145,12 +149,13 @@ func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool, interrupt *
 		pc   = uint64(0) // program counter
 		cost uint64
 		// copies used by tracer
-		pcCopy    uint64 // needed for the deferred EVMLogger
-		gasCopy   uint64 // for EVMLogger to log gas remaining before execution
-		logged    bool   // deferred EVMLogger should ignore already logged steps
-		res       []byte // result of the opcode execution function
-		debug     = evm.Config.Tracer != nil
-		isEIP4762 = evm.chainRules.IsEIP4762
+		pcCopy     uint64 // needed for the deferred EVMLogger
+		gasCopy    uint64 // for EVMLogger to log gas remaining before execution
+		logged     bool   // deferred EVMLogger should ignore already logged steps
+		res        []byte // result of the opcode execution function
+		debug      = evm.Config.Tracer != nil
+		isEIP4762  = evm.chainRules.IsEIP4762
+		isShanghai = evm.chainRules.IsShanghai
 	)
 	// Don't move this deferred function, it's placed before the OnOpcode-deferred method,
 	// so that it gets executed _after_: the OnOpcode needs the stacks before
@@ -174,6 +179,17 @@ func (evm *EVM) Run(contract *Contract, input []byte, readOnly bool, interrupt *
 			}
 		}()
 	}
+
+	// Fast path: switch dispatch with inlined hot opcodes and gas accumulation.
+	// Requires Shanghai+ because PUSH0 is the latest fork-gated inlined opcode.
+	if evm.Config.EnableEVMSwitchDispatch && isShanghai && !isEIP4762 && !debug {
+		ret, err = evm.runSwitch(contract, stack, mem, callContext, jumpTable, interrupt)
+		if err == errStopToken {
+			err = nil
+		}
+		return ret, err
+	}
+
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the

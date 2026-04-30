@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -37,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/stretchr/testify/require"
 )
 
 // testEthHandler is a mock event handler to listen for inbound network requests
@@ -376,6 +379,80 @@ func testSendTransactions(t *testing.T, protocol uint) {
 	}
 }
 
+// Tests that tx announcements are not dropped for burst sizes above the old 4096
+// limit but within the new 16384 default limit. This is the regression test for
+// POS-3471: during Polymarket spikes and migration events, the 4096 cap caused
+// BP nonce gaps because older hashes were evicted before reaching the peer.
+func TestTxAnnouncementsAboveOldLimit69(t *testing.T) {
+	testTxAnnouncementsAboveOldLimit(t, eth.ETH69)
+}
+func TestTxAnnouncementsAboveOldLimit68(t *testing.T) {
+	testTxAnnouncementsAboveOldLimit(t, eth.ETH68)
+}
+
+func testTxAnnouncementsAboveOldLimit(t *testing.T, protocol uint) {
+	t.Parallel()
+
+	handler := newTestHandler()
+	defer handler.close()
+
+	// 5000 txs: above the old 4096 limit, well within the new 16384 limit.
+	// With the old cap, syncTransactions would queue all 5000 hashes at once
+	// and the announceTransactions goroutine would truncate ~906 of them.
+	const count = 5000
+
+	insert := make([]*types.Transaction, count)
+	for nonce := range insert {
+		tx := types.NewTransaction(uint64(nonce), common.Address{}, big.NewInt(0), 100000, big.NewInt(0), nil)
+		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
+		insert[nonce] = tx
+	}
+	// Add in a goroutine to avoid blocking on the feed, then wait for events to
+	// drain before connecting the peer (same pattern as testSendTransactions).
+	go handler.txpool.Add(insert, false)
+	time.Sleep(250 * time.Millisecond)
+
+	p2pSrc, p2pSink := p2p.MsgPipe()
+	defer p2pSrc.Close()
+	defer p2pSink.Close()
+
+	src := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{1}, "", nil, p2pSrc), p2pSrc, handler.txpool)
+	sink := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{2}, "", nil, p2pSink), p2pSink, handler.txpool)
+	defer src.Close()
+	defer sink.Close()
+
+	go handler.handler.runEthPeer(src, func(peer *eth.Peer) error {
+		return eth.Handle((*ethHandler)(handler.handler), peer)
+	})
+	if err := sink.Handshake(1, handler.chain, eth.BlockRangeUpdatePacket{
+		EarliestBlock:   0,
+		LatestBlock:     handler.chain.CurrentBlock().Number.Uint64(),
+		LatestBlockHash: handler.chain.CurrentBlock().Hash(),
+	}); err != nil {
+		t.Fatalf("failed to run protocol handshake")
+	}
+
+	backend := new(testEthHandler)
+	anns := make(chan []common.Hash)
+	annSub := backend.txAnnounces.Subscribe(anns)
+	defer annSub.Unsubscribe()
+
+	go eth.Handle(backend, sink)
+
+	seen := make(map[common.Hash]struct{})
+	timeout := time.After(10 * time.Second)
+	for len(seen) < count {
+		select {
+		case hashes := <-anns:
+			for _, hash := range hashes {
+				seen[hash] = struct{}{}
+			}
+		case <-timeout:
+			t.Fatalf("tx announcement timed out: received %d/%d hashes", len(seen), count)
+		}
+	}
+}
+
 // Tests that transactions get propagated to all attached peers, either via direct
 // broadcasts or via announcements/retrievals.
 func TestTransactionPropagation69(t *testing.T) { testTransactionPropagation(t, eth.ETH69) }
@@ -706,6 +783,265 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+// Tests that when tx propagation is completely disabled, no transactions
+// are propagated to connected peers.
+func TestDisableTxPropagation68(t *testing.T) {
+	testDisableTxPropagation(t, eth.ETH68)
+}
+func TestDisableTxPropagation69(t *testing.T) {
+	testDisableTxPropagation(t, eth.ETH69)
+}
+
+func testDisableTxPropagation(t *testing.T, protocol uint) {
+	t.Parallel()
+
+	// Disable tx propagation on the source handler
+	updateConfig := func(cfg *handlerConfig) *handlerConfig {
+		cfg.disableTxPropagation = true
+		return cfg
+	}
+
+	// Create a source handler to send transactions from and a number of sinks
+	// to receive them. We need multiple sinks to ensure none of them gets
+	// any transactions.
+	source := newTestHandlerWithConfig(updateConfig)
+	source.handler.snapSync.Store(false) // Avoid requiring snap, otherwise some will be dropped below
+	defer source.close()
+
+	// Fill the source pool with transactions
+	txs := make([]*types.Transaction, 10)
+	for nonce := range txs {
+		tx := types.NewTransaction(uint64(nonce), common.Address{}, big.NewInt(0), 100000, big.NewInt(0), nil)
+		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
+		txs[nonce] = tx
+	}
+	source.txpool.Add(txs[:5], false)
+
+	sinks := make([]*testHandler, 10)
+	for i := 0; i < len(sinks); i++ {
+		sinks[i] = newTestHandler()
+		defer sinks[i].close()
+
+		sinks[i].handler.synced.Store(true) // mark synced to accept transactions
+	}
+
+	// Interconnect all the sink handlers with the source handler
+	for i, sink := range sinks {
+		sourcePipe, sinkPipe := p2p.MsgPipe()
+		defer sourcePipe.Close()
+		defer sinkPipe.Close()
+
+		sourcePeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{byte(i + 1)}, "", nil, sourcePipe), sourcePipe, source.txpool)
+		sinkPeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{0}, "", nil, sinkPipe), sinkPipe, sink.txpool)
+		defer sourcePeer.Close()
+		defer sinkPeer.Close()
+
+		go source.handler.runEthPeer(sourcePeer, func(peer *eth.Peer) error {
+			return eth.Handle((*ethHandler)(source.handler), peer)
+		})
+		go sink.handler.runEthPeer(sinkPeer, func(peer *eth.Peer) error {
+			return eth.Handle((*ethHandler)(sink.handler), peer)
+		})
+	}
+
+	// Subscribe to all the transaction pools
+	txChs := make([]chan core.NewTxsEvent, len(sinks))
+	for i := 0; i < len(sinks); i++ {
+		txChs[i] = make(chan core.NewTxsEvent, 10)
+
+		sub := sinks[i].txpool.SubscribeTransactions(txChs[i], false)
+		defer sub.Unsubscribe()
+	}
+
+	var wg sync.WaitGroup
+
+	// Transactions are propagated during initial sync via `runEthPeer`. As the
+	// source has disabled tx propagation, ensure that none of the sinks receive
+	// any transactions.
+	for i := range sinks {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			select {
+			case <-txChs[idx]:
+				t.Errorf("sink %d: received transactions even when tx propagation is completely disabled", idx)
+			case <-time.After(2 * time.Second):
+				// Expected: timeout without receiving any transactions
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// Transactions are also propagated via broadcast and announcement loops. Ensure that
+	// none of the receive any transactions.
+	source.txpool.Add(txs[5:], false)
+	for i := range sinks {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			select {
+			case <-txChs[idx]:
+				t.Errorf("sink %d: received transactions even when tx propagation is completely disabled", idx)
+			case <-time.After(2 * time.Second):
+				// Expected: timeout without receiving any transactions
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+// A simple private tx store for tests
+type PrivateTxStore struct {
+	mu    sync.RWMutex
+	store map[common.Hash]struct{}
+}
+
+func (p *PrivateTxStore) IsTxPrivate(hash common.Hash) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	_, ok := p.store[hash]
+	return ok
+}
+
+// Tests that when a tx is set to private, it's not propagated to any
+// connected peers.
+func TestPrivateTxNotPropagated68(t *testing.T) {
+	testPrivateTxNotPropagated(t, eth.ETH68)
+}
+func TestPrivateTxNotPropagated69(t *testing.T) {
+	testPrivateTxNotPropagated(t, eth.ETH69)
+}
+
+func testPrivateTxNotPropagated(t *testing.T, protocol uint) {
+	t.Parallel()
+
+	// Initialize a private tx store
+	privateTxStore := &PrivateTxStore{store: make(map[common.Hash]struct{})}
+
+	// Set the private tx store getter on the source handler
+	updateConfig := func(cfg *handlerConfig) *handlerConfig {
+		cfg.privateTxGetter = privateTxStore
+		return cfg
+	}
+
+	// Create a source handler to send transactions from and a number of sinks
+	// to receive them. We need multiple sinks to ensure none of them gets
+	// any transactions.
+	source := newTestHandlerWithConfig(updateConfig)
+	source.handler.snapSync.Store(false) // Avoid requiring snap, otherwise some will be dropped below
+	defer source.close()
+
+	// Fill the source pool with transactions
+	txs := make([]*types.Transaction, 10)
+	for nonce := range txs {
+		tx := types.NewTransaction(uint64(nonce), common.Address{}, big.NewInt(0), 100000, big.NewInt(0), nil)
+		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
+		txs[nonce] = tx
+	}
+	source.txpool.Add(txs[:5], false)
+
+	// Mark some transactions as private
+	privateTxStore.mu.Lock()
+	privateTxStore.store[txs[3].Hash()] = struct{}{}
+	privateTxStore.store[txs[4].Hash()] = struct{}{}
+	privateTxStore.mu.Unlock()
+
+	sinks := make([]*testHandler, 10)
+	for i := 0; i < len(sinks); i++ {
+		sinks[i] = newTestHandler()
+		defer sinks[i].close()
+
+		sinks[i].handler.synced.Store(true) // mark synced to accept transactions
+	}
+
+	// Interconnect all the sink handlers with the source handler
+	for i, sink := range sinks {
+		sourcePipe, sinkPipe := p2p.MsgPipe()
+		defer sourcePipe.Close()
+		defer sinkPipe.Close()
+
+		sourcePeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{byte(i + 1)}, "", nil, sourcePipe), sourcePipe, source.txpool)
+		sinkPeer := eth.NewPeer(protocol, p2p.NewPeerPipe(enode.ID{0}, "", nil, sinkPipe), sinkPipe, sink.txpool)
+		defer sourcePeer.Close()
+		defer sinkPeer.Close()
+
+		go source.handler.runEthPeer(sourcePeer, func(peer *eth.Peer) error {
+			return eth.Handle((*ethHandler)(source.handler), peer)
+		})
+		go sink.handler.runEthPeer(sinkPeer, func(peer *eth.Peer) error {
+			return eth.Handle((*ethHandler)(sink.handler), peer)
+		})
+	}
+
+	// Subscribe to all the transaction pools
+	txChs := make([]chan core.NewTxsEvent, len(sinks))
+	for i := 0; i < len(sinks); i++ {
+		txChs[i] = make(chan core.NewTxsEvent, 10)
+
+		sub := sinks[i].txpool.SubscribeTransactions(txChs[i], false)
+		defer sub.Unsubscribe()
+	}
+
+	var wg sync.WaitGroup
+
+	// Transactions are propagated during initial sync via `runEthPeer`. As the
+	// source has disabled tx propagation, ensure that none of the sinks receive
+	// any transactions.
+	var txReceivedCount atomic.Uint64
+	for i := range sinks {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			select {
+			case txs := <-txChs[idx]:
+				txReceivedCount.Add(uint64(len(txs.Txs)))
+				for _, tx := range txs.Txs {
+					// Ensure no private txs are received
+					if _, ok := privateTxStore.store[tx.Hash()]; ok {
+						t.Errorf("sink %d: received private transaction %x", idx, tx.Hash())
+					}
+				}
+			case <-time.After(2 * time.Second):
+				t.Errorf("sink %d: transaction propagation timed out", idx)
+			}
+		}(i)
+	}
+	wg.Wait()
+	require.Equal(t, txReceivedCount.Load(), uint64(len(sinks)*3), "sinks should have received only public transactions")
+
+	// Transactions are also propagated via broadcast and announcement loops. Ensure that
+	// none of the receive any transactions.
+	source.txpool.Add(txs[5:], false)
+
+	// Mark some transactions as private
+	privateTxStore.mu.Lock()
+	privateTxStore.store[txs[8].Hash()] = struct{}{}
+	privateTxStore.store[txs[9].Hash()] = struct{}{}
+	privateTxStore.mu.Unlock()
+
+	txReceivedCount.Store(0)
+	for i := range sinks {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			select {
+			case txs := <-txChs[idx]:
+				txReceivedCount.Add(uint64(len(txs.Txs)))
+				for _, tx := range txs.Txs {
+					// Ensure no private txs are received
+					if _, ok := privateTxStore.store[tx.Hash()]; ok {
+						t.Errorf("sink %d: received private transaction %x", idx, tx.Hash())
+					}
+				}
+			case <-time.After(2 * time.Second):
+				t.Errorf("sink %d: transaction propagation timed out", idx)
+			}
+		}(i)
+	}
+	wg.Wait()
+	require.Equal(t, txReceivedCount.Load(), uint64(len(sinks)*3), "sinks should have received only public transactions")
 }
 
 // TestCreateWitnessRequester tests the createWitnessRequester helper
