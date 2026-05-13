@@ -2064,11 +2064,7 @@ func (s *StateDB) SetOnCommitLogger(logger tracing.CommitHook) {
 	s.OnCommit = logger
 }
 
-func (s *StateDB) StateDiff(deleteEmptyObjects bool) (root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storages map[common.Hash]map[common.Hash][]byte, codes map[common.Hash][]byte, err error) {
-	root = s.IntermediateRoot(deleteEmptyObjects)
-	if err = s.Error(); err != nil {
-		return common.Hash{}, nil, nil, nil, nil, err
-	}
+func (s *StateDB) StateDiff(deleteEmptyObjects bool) (destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storages map[common.Hash]map[common.Hash][]byte, codes map[common.Hash][]byte, err error) {
 	destructs = make(map[common.Hash]struct{})
 	accounts = make(map[common.Hash][]byte)
 	storages = make(map[common.Hash]map[common.Hash][]byte)
