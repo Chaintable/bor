@@ -192,7 +192,9 @@ func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, 
 		}
 		if hooks.OnTxEnd != nil {
 			defer func() {
-				receipt.SetEffectiveGasPrice(tx, evm.Context.BaseFee)
+				if receipt != nil {
+					receipt.SetEffectiveGasPrice(tx, evm.Context.BaseFee)
+				}
 				hooks.OnTxEnd(receipt, err)
 			}()
 		}
