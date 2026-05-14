@@ -279,8 +279,6 @@ type Bor struct {
 	// ctx is cancelled when Close() is called, allowing in-flight operations to abort promptly.
 	ctx       context.Context
 	ctxCancel context.CancelFunc
-
-	tracer *tracing.Hooks
 }
 
 type signer struct {
@@ -299,7 +297,6 @@ func New(
 	genesisContracts GenesisContract,
 	devFakeAuthor bool,
 	blockTime time.Duration,
-	tracer *tracing.Hooks,
 ) *Bor {
 	// get bor config
 	borConfig := chainConfig.Bor
@@ -346,7 +343,6 @@ func New(
 		quit:                   make(chan struct{}),
 		ctx:                    ctx,
 		ctxCancel:              ctxCancel,
-		tracer:                 tracer,
 	}
 
 	c.authorizedSigner.Store(&signer{
@@ -1178,7 +1174,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, w
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, wrappedState vm.StateDB, body *types.Body, receipts []*types.Receipt) ([]*types.Receipt, error) {
+func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, wrappedState vm.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) ([]*types.Receipt, error) {
 	// Reject the block if it has withdrawals or requests
 	if body.Withdrawals != nil || header.WithdrawalsHash != nil {
 		return nil, consensus.ErrUnexpectedWithdrawals
@@ -1204,7 +1200,7 @@ func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, 
 
 		if c.HeimdallClient != nil {
 			// commit states
-			stateSyncData, err = c.CommitStates(wrappedState, header, cx)
+			stateSyncData, err = c.CommitStates(wrappedState, header, cx, tracer)
 			if err != nil {
 				return nil, fmt.Errorf("%w: error while committing states: %w", core.ErrStateSyncProcessing, err)
 			}
@@ -1333,7 +1329,7 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state vm.StateDB) 
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, time.Duration, error) {
+func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, time.Duration, error) {
 	headerNumber := header.Number.Uint64()
 	if body.Withdrawals != nil || header.WithdrawalsHash != nil {
 		return nil, nil, 0, consensus.ErrUnexpectedWithdrawals
@@ -1361,7 +1357,7 @@ func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *typ
 
 		if c.HeimdallClient != nil {
 			// commit states
-			stateSyncData, err = c.CommitStates(state, header, cx)
+			stateSyncData, err = c.CommitStates(state, header, cx, tracer)
 			if err != nil {
 				log.Error("Error while committing states", "error", err)
 				return nil, nil, 0, err
@@ -1716,6 +1712,7 @@ func (c *Bor) CommitStates(
 	state vm.StateDB,
 	header *types.Header,
 	chain statefull.ChainContext,
+	tracer *tracing.Hooks,
 ) ([]*types.StateSyncData, error) {
 	fetchStart := time.Now()
 	number := header.Number.Uint64()
@@ -1821,9 +1818,9 @@ func (c *Bor) CommitStates(
 
 	var vmConfig *vm.Config
 	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(header.Number.Uint64(), header.Hash()))
-	if c.tracer != nil {
+	if tracer != nil {
 		stateReceiverContract := common.HexToAddress(c.config.StateReceiverContract)
-		vmConfig = &vm.Config{Tracer: live.NewBorStateSyncTxnTracer(c.tracer, stateReceiverContract)}
+		vmConfig = &vm.Config{Tracer: live.NewBorStateSyncTxnTracer(tracer, stateReceiverContract)}
 	}
 	if totalStateSyncData > 0 {
 		if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnBorTxStart != nil {

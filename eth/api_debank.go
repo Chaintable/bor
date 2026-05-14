@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/eth/tracers/live"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -244,15 +245,16 @@ func (api *DebankAPI) DebankBlock(ctx context.Context, blockNrOrHash rpc.BlockNu
 
 	config := api.eth.APIBackend.ChainConfig()
 
-	rpcTracer := ptracer.RPCTracer{}
+	rpcTracer := live.NewRpcTracer()
 	tracer := &tracers.Tracer{
 		Hooks: &tracing.Hooks{
-			OnTxStart: rpcTracer.OnTxStart,
-			OnTxEnd:   rpcTracer.OnTxEnd,
-			OnEnter:   rpcTracer.OnEnter,
-			OnExit:    rpcTracer.OnExit,
-			OnOpcode:  rpcTracer.OnOpcode,
-			OnLog:     rpcTracer.OnLog,
+			OnTxStart:    rpcTracer.OnTxStart,
+			OnTxEnd:      rpcTracer.OnTxEnd,
+			OnEnter:      rpcTracer.OnEnter,
+			OnExit:       rpcTracer.OnExit,
+			OnOpcode:     rpcTracer.OnOpcode,
+			OnLog:        rpcTracer.OnLog,
+			OnBorTxStart: rpcTracer.OnBorTxStart,
 		},
 		Stop:      rpcTracer.Stop,
 		GetResult: rpcTracer.GetResult,

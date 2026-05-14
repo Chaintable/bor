@@ -1907,7 +1907,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 
 	var block *types.Block
-	block, work.receipts, _, err = w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
+	block, work.receipts, _, err = w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts, w.vmConfig().Tracer)
 
 	if err != nil {
 		return &newPayloadResult{err: err}
@@ -2301,7 +2301,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		var commitTime time.Duration
 		block, env.receipts, commitTime, err = w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, &types.Body{
 			Transactions: env.txs,
-		}, env.receipts)
+		}, env.receipts, w.vmConfig().Tracer)
 		finalizeDuration := time.Since(finalizeStart)
 		finalizeAndAssembleTimer.Update(finalizeDuration)
 		intermediateRootTimer.Update(commitTime)
