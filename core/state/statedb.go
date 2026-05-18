@@ -2070,10 +2070,6 @@ func (s *StateDB) StateDiff(deleteEmptyObjects bool) (destructs map[common.Hash]
 	storages = make(map[common.Hash]map[common.Hash][]byte)
 	codes = make(map[common.Hash][]byte)
 	s.Finalise(deleteEmptyObjects)
-	if s.Error() != nil {
-		err = s.Error()
-		return
-	}
 	var (
 		buf    = crypto.NewKeccakState()
 		encode = func(val common.Hash) []byte {
