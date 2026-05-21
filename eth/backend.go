@@ -308,7 +308,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		options.VmConfig.Tracer = t
 	}
 
-	engine, err := ethconfig.CreateConsensusEngine(config.Genesis.Config, config, chainDb, blockChainAPI, options.VmConfig.Tracer)
+	engine, err := ethconfig.CreateConsensusEngine(config.Genesis.Config, config, chainDb, blockChainAPI)
 	eth.engine = engine
 	if err != nil {
 		return nil, err
@@ -532,6 +532,9 @@ func (s *Ethereum) APIs() []rpc.API {
 		}, {
 			Namespace: "net",
 			Service:   s.netRPCService,
+		}, {
+			Namespace: "trace",
+			Service:   NewDebankAPI(s),
 		},
 	}...)
 }

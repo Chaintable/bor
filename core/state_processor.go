@@ -155,7 +155,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards), apply
 	// state sync event (if any), and append the receipt.
 	receiptsCountBeforeFinalize := len(receipts)
-	receipts, err = p.chain.Engine().Finalize(p.chain, header, statedb, block.Body(), receipts)
+	receipts, err = p.chain.Engine().Finalize(p.chain, header, statedb, block.Body(), receipts, cfg.Tracer)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,9 @@ func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, 
 		}
 		if hooks.OnTxEnd != nil {
 			defer func() {
-				receipt.SetEffectiveGasPrice(tx, evm.Context.BaseFee)
+				if receipt != nil {
+					receipt.SetEffectiveGasPrice(tx, evm.Context.BaseFee)
+				}
 				hooks.OnTxEnd(receipt, err)
 			}()
 		}
