@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/eth/tracers/live"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
@@ -1173,7 +1174,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, w
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, wrappedState vm.StateDB, body *types.Body, receipts []*types.Receipt) ([]*types.Receipt, error) {
+func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, wrappedState vm.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) ([]*types.Receipt, error) {
 	// Reject the block if it has withdrawals or requests
 	if body.Withdrawals != nil || header.WithdrawalsHash != nil {
 		return nil, consensus.ErrUnexpectedWithdrawals
@@ -1199,7 +1200,7 @@ func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, 
 
 		if c.HeimdallClient != nil {
 			// commit states
-			stateSyncData, err = c.CommitStates(wrappedState, header, cx)
+			stateSyncData, err = c.CommitStates(wrappedState, header, cx, tracer)
 			if err != nil {
 				return nil, fmt.Errorf("%w: error while committing states: %w", core.ErrStateSyncProcessing, err)
 			}
@@ -1328,7 +1329,7 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state vm.StateDB) 
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, time.Duration, error) {
+func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, time.Duration, error) {
 	headerNumber := header.Number.Uint64()
 	if body.Withdrawals != nil || header.WithdrawalsHash != nil {
 		return nil, nil, 0, consensus.ErrUnexpectedWithdrawals
@@ -1356,7 +1357,7 @@ func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *typ
 
 		if c.HeimdallClient != nil {
 			// commit states
-			stateSyncData, err = c.CommitStates(state, header, cx)
+			stateSyncData, err = c.CommitStates(state, header, cx, tracer)
 			if err != nil {
 				log.Error("Error while committing states", "error", err)
 				return nil, nil, 0, err
@@ -1711,6 +1712,7 @@ func (c *Bor) CommitStates(
 	state vm.StateDB,
 	header *types.Header,
 	chain statefull.ChainContext,
+	tracer *tracing.Hooks,
 ) ([]*types.StateSyncData, error) {
 	fetchStart := time.Now()
 	number := header.Number.Uint64()
@@ -1802,6 +1804,39 @@ func (c *Bor) CommitStates(
 
 	var gasUsed uint64
 
+	var totalStateSyncData = 0
+	for _, eventRecord := range eventRecords {
+		if eventRecord.ID <= lastStateID {
+			continue
+		}
+
+		if err = validateEventRecord(eventRecord, number, to, lastStateID, chainID); err != nil {
+			break
+		}
+		totalStateSyncData++
+	}
+
+	var vmConfig *vm.Config
+	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(header.Number.Uint64(), header.Hash()))
+	if tracer != nil {
+		stateReceiverContract := common.HexToAddress(c.config.StateReceiverContract)
+		vmConfig = &vm.Config{Tracer: live.NewBorStateSyncTxnTracer(tracer, stateReceiverContract)}
+	}
+	if totalStateSyncData > 0 {
+		if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnBorTxStart != nil {
+			vmConfig.Tracer.OnBorTxStart(txHash)
+		}
+
+		defer func() {
+			if vmConfig != nil && vmConfig.Tracer != nil && vmConfig.Tracer.OnTxEnd != nil {
+				vmConfig.Tracer.OnTxEnd(&types.Receipt{
+					Status: types.ReceiptStatusSuccessful,
+					TxHash: txHash,
+				}, err)
+			}
+		}()
+	}
+
 	for _, eventRecord := range eventRecords {
 		if eventRecord.ID <= lastStateID {
 			continue
@@ -1824,7 +1859,7 @@ func (c *Bor) CommitStates(
 		// we expect that this call MUST emit an event, otherwise we wouldn't make a receipt
 		// if the receiver address is not a contract then we'll skip the most of the execution and emitting an event as well
 		// https://github.com/0xPolygon/genesis-contracts/blob/master/contracts/StateReceiver.sol#L27
-		gasUsed, err = c.GenesisContractsClient.CommitState(eventRecord, state, header, chain)
+		gasUsed, err = c.GenesisContractsClient.CommitState(eventRecord, state, header, chain, vmConfig)
 		if err != nil {
 			return nil, err
 		}

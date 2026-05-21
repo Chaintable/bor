@@ -427,7 +427,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards), apply
 	// state sync event (if any), and append the receipt.
 	receiptsCountBeforeFinalize := len(receipts)
-	receipts, err = p.chain.Engine().Finalize(p.bc.hc, header, statedb, block.Body(), receipts)
+	receipts, err = p.chain.Engine().Finalize(p.bc.hc, header, statedb, block.Body(), receipts, cfg.Tracer)
 	if err != nil {
 		return nil, err
 	}
