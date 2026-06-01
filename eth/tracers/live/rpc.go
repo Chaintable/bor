@@ -12,7 +12,9 @@ import (
 )
 
 type RpcTracer struct {
-	tracer ptracer.RPCTracer
+	tracer      ptracer.RPCTracer
+	borTxIndex  uint
+	borTxActive bool
 }
 
 func NewRpcTracer() RpcTracer {
@@ -22,6 +24,8 @@ func NewRpcTracer() RpcTracer {
 }
 
 func (t *RpcTracer) OnBlockStart(block *types.Block) {
+	t.borTxIndex = borTxIndexForBlock(block)
+	t.borTxActive = false
 	t.tracer.OnBlockStart(block)
 }
 
@@ -33,10 +37,17 @@ func (t *RpcTracer) OnBorTxStart(txHash common.Hash) {
 	//https://github.com/erigontech/erigon/blob/main/core/blockchain.go#L60
 	tx := types.NewBorTransactionWithGasLimit(30_000_000)
 	tx.SetHash(txHash)
+	t.borTxActive = true
 	t.tracer.OnTxStart(nil, tx, common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe"))
 }
 
 func (t *RpcTracer) OnTxEnd(receipt *types.Receipt, err error) {
+	if t.borTxActive {
+		if receipt != nil {
+			receipt.TransactionIndex = t.borTxIndex
+		}
+		t.borTxActive = false
+	}
 	t.tracer.OnTxEnd(receipt, err)
 }
 
