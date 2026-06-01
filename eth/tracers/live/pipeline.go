@@ -50,6 +50,8 @@ func NewPipelineTracer(cfg json.RawMessage) (*tracing.Hooks, error) {
 
 type PipelineTracer struct {
 	pipelineTracer *tracer.PipelineTracer
+	borTxIndex     uint
+	borTxActive    bool
 }
 
 type pipelineTracerConfig struct {
@@ -92,6 +94,8 @@ func (t *PipelineTracer) OnClose() {
 }
 
 func (t *PipelineTracer) OnBlockStart(event tracing.BlockEvent) {
+	t.borTxIndex = borTxIndexForBlock(event.Block)
+	t.borTxActive = false
 	t.pipelineTracer.OnBlockStart(event)
 }
 
@@ -111,10 +115,17 @@ func (t *PipelineTracer) OnBorTxStart(txHash common.Hash) {
 	//https://github.com/erigontech/erigon/blob/main/core/blockchain.go#L60
 	tx := types.NewBorTransactionWithGasLimit(30_000_000)
 	tx.SetHash(txHash)
+	t.borTxActive = true
 	t.pipelineTracer.OnTxStart(nil, tx, common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe"))
 }
 
 func (t *PipelineTracer) OnTxEnd(receipt *types.Receipt, err error) {
+	if t.borTxActive {
+		if receipt != nil {
+			receipt.TransactionIndex = t.borTxIndex
+		}
+		t.borTxActive = false
+	}
 	t.pipelineTracer.OnTxEnd(receipt, err)
 }
 
