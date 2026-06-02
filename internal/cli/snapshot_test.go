@@ -48,7 +48,7 @@ func TestDeleteStateHistoryIndex(t *testing.T) {
 	rawdb.WriteStorageHistoryIndexBlock(db, addressHash, storageHash, 0, []byte{0x05})
 	require.NoError(t, db.Put([]byte("unrelated"), []byte{0x06}))
 
-	deleteStateHistoryIndex(db)
+	require.NoError(t, deleteStateHistoryIndex(db))
 
 	require.Nil(t, rawdb.ReadStateHistoryIndexMetadata(db))
 	require.Nil(t, rawdb.ReadAccountHistoryIndex(db, addressHash))

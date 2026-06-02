@@ -14,6 +14,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/leveldb"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/internal/cli/flagset"
 	"github.com/ethereum/go-ethereum/internal/cli/server"
 	"github.com/ethereum/go-ethereum/log"
@@ -677,7 +679,7 @@ func (c *RebuildStateHistoryIndexCommand) MarkDown() string {
 		"# Rebuild state history index",
 		"The ```bor snapshot rebuild-state-history-index``` command deletes path state history index metadata and index keys from the chain database. Bor rebuilds these indexes from the existing state history freezer on the next startup when state history indexing is enabled.",
 		`
-This command does not delete state history ancient data. Stop Bor before running it, then restart Bor with state history indexing enabled.
+This command only opens the key-value database and does not delete or inspect state history ancient data. Stop Bor before running it, then restart Bor with state history indexing enabled.
 `,
 		c.Flags().MarkDown(),
 	}
@@ -691,6 +693,7 @@ func (c *RebuildStateHistoryIndexCommand) Help() string {
 
   This command deletes path state history indexes so Bor can rebuild them on the next startup.
   Stop Bor before running it, then restart with -history.state=0.
+  It only opens the key-value database, so -datadir.ancient is not required.
 
 ` + c.Flags().Help()
 }
@@ -707,7 +710,7 @@ func (c *RebuildStateHistoryIndexCommand) Flags() *flagset.Flagset {
 	flags.StringFlag(&flagset.StringFlag{
 		Name:    "datadir.ancient",
 		Value:   &c.datadirAncient,
-		Usage:   "Path of the ancient data directory",
+		Usage:   "Ignored by this command; accepted for compatibility",
 		Default: "",
 	})
 	flags.BoolFlag(&flagset.BoolFlag{
@@ -773,17 +776,32 @@ func (c *RebuildStateHistoryIndexCommand) Run(args []string) int {
 }
 
 func (c *RebuildStateHistoryIndexCommand) rebuildStateHistoryIndex(stack *node.Node, dbHandles int) error {
-	chaindb, err := stack.OpenDatabaseWithFreezer(chaindataPath, 1024, dbHandles, c.datadirAncient, "", false, true, false, false, false, false)
+	chaindb, err := openChainKeyValueStore(stack, 1024, dbHandles)
 	if err != nil {
 		return err
 	}
 	defer chaindb.Close()
 
-	deleteStateHistoryIndex(chaindb)
-	return nil
+	return deleteStateHistoryIndex(chaindb)
 }
 
-func deleteStateHistoryIndex(db ethdb.Database) {
+func openChainKeyValueStore(stack *node.Node, cache, handles int) (ethdb.KeyValueStore, error) {
+	path := stack.ResolvePath(chaindataPath)
+
+	switch dbEngine := rawdb.PreexistingDatabase(path); dbEngine {
+	case rawdb.DBPebble:
+		log.Info("Using pebble as the backing database")
+		return pebble.New(path, cache, handles, "", false)
+	case rawdb.DBLeveldb:
+		log.Info("Using leveldb as the backing database")
+		return leveldb.New(path, cache, handles, "", false)
+	default:
+		return nil, fmt.Errorf("no key-value database found at %s", path)
+	}
+}
+
+func deleteStateHistoryIndex(db ethdb.KeyValueStore) error {
 	rawdb.DeleteStateHistoryIndexMetadata(db)
 	rawdb.DeleteStateHistoryIndexes(db)
+	return db.SyncKeyValue()
 }
