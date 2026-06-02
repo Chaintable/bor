@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/cli/flagset"
 	"github.com/ethereum/go-ethereum/internal/cli/server"
 	"github.com/ethereum/go-ethereum/log"
@@ -39,6 +40,7 @@ func (c *SnapshotCommand) MarkDown() string {
 		"- [```snapshot prune-state```](./snapshot_prune-state.md): Prune state databases at the given datadir location.",
 		"- [```snapshot prune-block```](./snapshot_prune-block.md): Prune ancient chaindata at the given datadir location.",
 		"- [```snapshot inspect-ancient-db```](./snapshot_inspect-ancient-db.md): Inspect few fields in ancient datastore.",
+		"- [```snapshot rebuild-state-history-index```](./snapshot_rebuild-state-history-index.md): Delete path state history indexes so they can be rebuilt on startup.",
 	}
 
 	return strings.Join(items, "\n\n")
@@ -60,7 +62,11 @@ func (c *SnapshotCommand) Help() string {
 
   Inspect ancient DB pruning related fields:
 
-    $ bor snapshot inspect-ancient-db`
+    $ bor snapshot inspect-ancient-db
+
+  Rebuild path state history indexes:
+
+    $ bor snapshot rebuild-state-history-index -datadir /var/data -yes`
 }
 
 // Synopsis implements the cli.Command interface
@@ -656,4 +662,128 @@ func (c *InspectAncientDbCommand) inspectAncientDb(stack *node.Node, dbHandles i
 	defer chaindb.Close()
 
 	return rawdb.AncientInspect(chaindb)
+}
+
+type RebuildStateHistoryIndexCommand struct {
+	*Meta
+
+	datadirAncient string
+	yes            bool
+}
+
+// MarkDown implements cli.MarkDown interface
+func (c *RebuildStateHistoryIndexCommand) MarkDown() string {
+	items := []string{
+		"# Rebuild state history index",
+		"The ```bor snapshot rebuild-state-history-index``` command deletes path state history index metadata and index keys from the chain database. Bor rebuilds these indexes from the existing state history freezer on the next startup when state history indexing is enabled.",
+		`
+This command does not delete state history ancient data. Stop Bor before running it, then restart Bor with state history indexing enabled.
+`,
+		c.Flags().MarkDown(),
+	}
+
+	return strings.Join(items, "\n\n")
+}
+
+// Help implements the cli.Command interface
+func (c *RebuildStateHistoryIndexCommand) Help() string {
+	return `Usage: bor snapshot rebuild-state-history-index -datadir <datadir> -yes
+
+  This command deletes path state history indexes so Bor can rebuild them on the next startup.
+  Stop Bor before running it, then restart with -history.state=0.
+
+` + c.Flags().Help()
+}
+
+// Synopsis implements the cli.Command interface
+func (c *RebuildStateHistoryIndexCommand) Synopsis() string {
+	return "Rebuild path state history indexes"
+}
+
+// Flags: datadir, datadir.ancient, yes
+func (c *RebuildStateHistoryIndexCommand) Flags() *flagset.Flagset {
+	flags := c.NewFlagSet("rebuild-state-history-index")
+
+	flags.StringFlag(&flagset.StringFlag{
+		Name:    "datadir.ancient",
+		Value:   &c.datadirAncient,
+		Usage:   "Path of the ancient data directory",
+		Default: "",
+	})
+	flags.BoolFlag(&flagset.BoolFlag{
+		Name:    "yes",
+		Value:   &c.yes,
+		Usage:   "Confirm deletion of state history indexes",
+		Default: false,
+	})
+
+	return flags
+}
+
+// Run implements the cli.Command interface
+func (c *RebuildStateHistoryIndexCommand) Run(args []string) int {
+	flags := c.Flags()
+
+	if err := flags.Parse(args); err != nil {
+		c.UI.Error(err.Error())
+		return 1
+	}
+
+	datadir := c.dataDir
+	posArgs := flags.Args()
+	if datadir == "" && len(posArgs) > 0 {
+		datadir = posArgs[0]
+	}
+	if len(posArgs) > 1 {
+		c.UI.Error("too many arguments")
+		return 1
+	}
+	if datadir == "" {
+		c.UI.Error("datadir is required")
+		return 1
+	}
+	if !c.yes {
+		c.UI.Error("confirmation required: rerun with -yes after stopping Bor and backing up the datadir")
+		return 1
+	}
+
+	stack, err := node.New(&node.Config{
+		DataDir: datadir,
+		Name:    "bor",
+	})
+	if err != nil {
+		c.UI.Error(err.Error())
+		return 1
+	}
+	defer stack.Close()
+
+	dbHandles, err := server.MakeDatabaseHandles(0)
+	if err != nil {
+		c.UI.Error(err.Error())
+		return 1
+	}
+
+	if err := c.rebuildStateHistoryIndex(stack, dbHandles); err != nil {
+		c.UI.Error(err.Error())
+		return 1
+	}
+
+	c.UI.Output("State history indexes deleted. Restart Bor with -history.state=0 to rebuild them.")
+	return 0
+}
+
+func (c *RebuildStateHistoryIndexCommand) rebuildStateHistoryIndex(stack *node.Node, dbHandles int) error {
+	chaindb, err := stack.OpenDatabaseWithFreezer(chaindataPath, 1024, dbHandles, c.datadirAncient, "", false, true, false, false, false, false)
+	if err != nil {
+		return err
+	}
+	defer chaindb.Close()
+
+	deleteStateHistoryIndex(chaindb)
+	return nil
+}
+
+func deleteStateHistoryIndex(db ethdb.Database) {
+	rawdb.DeleteStateHistoryIndexMetadata(db)
+	rawdb.DeleteStateHistoryIndexes(db)
 }
