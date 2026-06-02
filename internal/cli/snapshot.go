@@ -42,7 +42,7 @@ func (c *SnapshotCommand) MarkDown() string {
 		"- [```snapshot prune-state```](./snapshot_prune-state.md): Prune state databases at the given datadir location.",
 		"- [```snapshot prune-block```](./snapshot_prune-block.md): Prune ancient chaindata at the given datadir location.",
 		"- [```snapshot inspect-ancient-db```](./snapshot_inspect-ancient-db.md): Inspect few fields in ancient datastore.",
-		"- [```snapshot rebuild-state-history-index```](./snapshot_rebuild-state-history-index.md): Delete path state history indexes so they can be rebuilt on startup.",
+		"- [```snapshot clear-state-history-index```](./snapshot_clear-state-history-index.md): Clear path state history indexes so they can be rebuilt on startup.",
 	}
 
 	return strings.Join(items, "\n\n")
@@ -66,9 +66,9 @@ func (c *SnapshotCommand) Help() string {
 
     $ bor snapshot inspect-ancient-db
 
-  Rebuild path state history indexes:
+  Clear path state history indexes:
 
-    $ bor snapshot rebuild-state-history-index -datadir /var/data -yes`
+    $ bor snapshot clear-state-history-index -datadir /var/data -yes`
 }
 
 // Synopsis implements the cli.Command interface
@@ -666,7 +666,7 @@ func (c *InspectAncientDbCommand) inspectAncientDb(stack *node.Node, dbHandles i
 	return rawdb.AncientInspect(chaindb)
 }
 
-type RebuildStateHistoryIndexCommand struct {
+type ClearStateHistoryIndexCommand struct {
 	*Meta
 
 	datadirAncient string
@@ -674,10 +674,10 @@ type RebuildStateHistoryIndexCommand struct {
 }
 
 // MarkDown implements cli.MarkDown interface
-func (c *RebuildStateHistoryIndexCommand) MarkDown() string {
+func (c *ClearStateHistoryIndexCommand) MarkDown() string {
 	items := []string{
-		"# Rebuild state history index",
-		"The ```bor snapshot rebuild-state-history-index``` command deletes path state history index metadata and index keys from the chain database. Bor rebuilds these indexes from the existing state history freezer on the next startup when state history indexing is enabled.",
+		"# Clear state history index",
+		"The ```bor snapshot clear-state-history-index``` command deletes path state history index metadata and index keys from the chain database. Bor rebuilds these indexes from the existing state history freezer on the next startup when state history indexing is enabled.",
 		`
 This command only opens the key-value database and does not delete or inspect state history ancient data. Stop Bor before running it, then restart Bor with state history indexing enabled.
 `,
@@ -688,8 +688,8 @@ This command only opens the key-value database and does not delete or inspect st
 }
 
 // Help implements the cli.Command interface
-func (c *RebuildStateHistoryIndexCommand) Help() string {
-	return `Usage: bor snapshot rebuild-state-history-index -datadir <datadir> -yes
+func (c *ClearStateHistoryIndexCommand) Help() string {
+	return `Usage: bor snapshot clear-state-history-index -datadir <datadir> -yes
 
   This command deletes path state history indexes so Bor can rebuild them on the next startup.
   Stop Bor before running it, then restart with -history.state=0.
@@ -699,13 +699,13 @@ func (c *RebuildStateHistoryIndexCommand) Help() string {
 }
 
 // Synopsis implements the cli.Command interface
-func (c *RebuildStateHistoryIndexCommand) Synopsis() string {
-	return "Rebuild path state history indexes"
+func (c *ClearStateHistoryIndexCommand) Synopsis() string {
+	return "Clear path state history indexes"
 }
 
 // Flags: datadir, datadir.ancient, yes
-func (c *RebuildStateHistoryIndexCommand) Flags() *flagset.Flagset {
-	flags := c.NewFlagSet("rebuild-state-history-index")
+func (c *ClearStateHistoryIndexCommand) Flags() *flagset.Flagset {
+	flags := c.NewFlagSet("clear-state-history-index")
 
 	flags.StringFlag(&flagset.StringFlag{
 		Name:    "datadir.ancient",
@@ -724,7 +724,7 @@ func (c *RebuildStateHistoryIndexCommand) Flags() *flagset.Flagset {
 }
 
 // Run implements the cli.Command interface
-func (c *RebuildStateHistoryIndexCommand) Run(args []string) int {
+func (c *ClearStateHistoryIndexCommand) Run(args []string) int {
 	flags := c.Flags()
 
 	if err := flags.Parse(args); err != nil {
@@ -766,7 +766,7 @@ func (c *RebuildStateHistoryIndexCommand) Run(args []string) int {
 		return 1
 	}
 
-	if err := c.rebuildStateHistoryIndex(stack, dbHandles); err != nil {
+	if err := c.clearStateHistoryIndex(stack, dbHandles); err != nil {
 		c.UI.Error(err.Error())
 		return 1
 	}
@@ -775,7 +775,7 @@ func (c *RebuildStateHistoryIndexCommand) Run(args []string) int {
 	return 0
 }
 
-func (c *RebuildStateHistoryIndexCommand) rebuildStateHistoryIndex(stack *node.Node, dbHandles int) error {
+func (c *ClearStateHistoryIndexCommand) clearStateHistoryIndex(stack *node.Node, dbHandles int) error {
 	chaindb, err := openChainKeyValueStore(stack, 1024, dbHandles)
 	if err != nil {
 		return err

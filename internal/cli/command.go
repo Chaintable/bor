@@ -206,8 +206,8 @@ func Commands() map[string]MarkDownCommandFactory {
 				Meta: meta,
 			}, nil
 		},
-		"snapshot rebuild-state-history-index": func() (MarkDownCommand, error) {
-			return &RebuildStateHistoryIndexCommand{
+		"snapshot clear-state-history-index": func() (MarkDownCommand, error) {
+			return &ClearStateHistoryIndexCommand{
 				Meta: meta,
 			}, nil
 		},
