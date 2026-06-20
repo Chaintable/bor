@@ -2372,6 +2372,9 @@ func (w *worker) clearPending(number uint64) {
 // vmConfig returns the VM config.
 func (w *worker) vmConfig() vm.Config {
 	cfg := *w.chain.GetVMConfig()
+	// The miner maintains pending work even when sealing is not enabled. Live
+	// tracers are process-wide and may not be safe to share with block import.
+	cfg.Tracer = nil
 	return cfg
 }
 
