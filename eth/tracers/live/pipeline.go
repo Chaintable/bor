@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/tracers"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -121,9 +120,6 @@ func (t *PipelineTracer) OnBorTxStart(txHash common.Hash) {
 }
 
 func (t *PipelineTracer) OnTxEnd(receipt *types.Receipt, err error) {
-	if err != nil {
-		log.Error("OnTxEnd", "receipt", receipt, "err", err)
-	}
 	if t.borTxActive {
 		if receipt != nil {
 			receipt.TransactionIndex = t.borTxIndex
