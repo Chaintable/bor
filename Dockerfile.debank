@@ -1,10 +1,6 @@
 FROM golang:1.26 AS builder
 
-ARG ACCESS_TOKEN
-
 RUN apt-get update && apt-get install -y make gcc build-essential git bash
-
-RUN git config --global url."https://x-access-token:${ACCESS_TOKEN}@github.com".insteadOf "https://github.com"
 
 WORKDIR /go/src/github.com/maticnetwork/bor
 
