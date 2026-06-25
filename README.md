@@ -22,13 +22,15 @@ Chaintable write node (this repo · producer, embeds pipeline tracer)
 # Bor Overview
 Bor is the official Golang implementation of the Polygon PoS blockchain. It is a fork of [geth](https://github.com/ethereum/go-ethereum) and is EVM compatible (upto London fork).
 
+[![API Reference](https://pkg.go.dev/badge/github.com/0xPolygon/bor)](https://pkg.go.dev/github.com/0xPolygon/bor)
+[![Go Report Card](https://goreportcard.com/badge/github.com/0xPolygon/bor)](https://goreportcard.com/report/github.com/0xPolygon/bor)
 ![MIT License](https://img.shields.io/github/license/0xPolygon/bor)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-blue.svg)](https://discord.com/invite/0xpolygonrnd)
 [![Twitter Follow](https://img.shields.io/twitter/follow/0xPolygon.svg?style=social)](https://twitter.com/0xPolygon)
 
 ### Installing bor using packaging
 
-The easiest way to get started with bor is to install the packages using the command below. Please take a look at the [releases](https://github.com/Chaintable/bor/releases) section to find the latest stable version of bor. (Chaintable CI also publishes write-node container images to a public ECR registry.)
+The easiest way to get started with bor is to install the packages using the command below. Please take a look at the [releases](https://github.com/0xPolygon/bor/releases) section to find the latest stable version of bor.
     
     curl -L https://raw.githubusercontent.com/0xPolygon/install/main/bor.sh | bash -s -- v2.0.0 <network> <node_type>
 
