@@ -36,6 +36,31 @@ var (
 	engine                      = ethash.NewFullFaker()
 )
 
+func TestDeleteStateHistoryIndex(t *testing.T) {
+	db := rawdb.NewMemoryDatabase()
+	addressHash := common.HexToHash("0x01")
+	storageHash := common.HexToHash("0x02")
+
+	rawdb.WriteStateHistoryIndexMetadata(db, []byte{0x01})
+	rawdb.WriteAccountHistoryIndex(db, addressHash, []byte{0x02})
+	rawdb.WriteStorageHistoryIndex(db, addressHash, storageHash, []byte{0x03})
+	rawdb.WriteAccountHistoryIndexBlock(db, addressHash, 0, []byte{0x04})
+	rawdb.WriteStorageHistoryIndexBlock(db, addressHash, storageHash, 0, []byte{0x05})
+	require.NoError(t, db.Put([]byte("unrelated"), []byte{0x06}))
+
+	require.NoError(t, deleteStateHistoryIndex(db))
+
+	require.Nil(t, rawdb.ReadStateHistoryIndexMetadata(db))
+	require.Nil(t, rawdb.ReadAccountHistoryIndex(db, addressHash))
+	require.Nil(t, rawdb.ReadStorageHistoryIndex(db, addressHash, storageHash))
+	require.Nil(t, rawdb.ReadAccountHistoryIndexBlock(db, addressHash, 0))
+	require.Nil(t, rawdb.ReadStorageHistoryIndexBlock(db, addressHash, storageHash, 0))
+
+	blob, err := db.Get([]byte("unrelated"))
+	require.NoError(t, err)
+	require.Equal(t, []byte{0x06}, blob)
+}
+
 func TestOfflineBlockPrune(t *testing.T) {
 	t.Skip("PBSS does not support ancient block pruning")
 	t.Parallel()
