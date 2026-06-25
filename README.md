@@ -1,15 +1,34 @@
+# Chaintable write node
+
+> Fork of [0xPolygon/bor](https://github.com/0xPolygon/bor), with Chaintable pipeline patches.
+
+## Architecture
+
+This repo runs the chain's execution layer with the [Chaintable pipeline](https://github.com/Chaintable/pipeline) tracer embedded. The tracer extracts block data — block headers, transactions, call traces, receipts, events, and state diffs — and ships it to **S3 + Kafka** (see pipeline's [architecture](https://github.com/Chaintable/pipeline/blob/main/docs/architecture.md)). Two consumption paths:
+
+- **Block headers + state diffs** → Kafka + S3 → [leafage-evm](https://github.com/Chaintable/leafage-evm): a lightweight EVM executor serving state queries (`eth_call`, `eth_estimateGas`, …), no P2P sync, no tx storage (see its [architecture](https://github.com/Chaintable/leafage-evm#architecture)).
+- **Block files** (transactions · call traces · receipts · events) → S3 → Chaintable's transaction/trace indexing pipeline.
+
+```
+Chaintable write node (this repo · producer, embeds pipeline tracer)
+        │
+        ├─ block headers + state diffs ──────────────────→ Kafka + S3 ─→ leafage-evm (EVM state queries)
+        │
+        └─ block files (tx · trace · receipts · events) ──→ S3 ─→ Chaintable indexing pipeline (tx/trace data)
+```
+
+---
+
 # Bor Overview
 Bor is the official Golang implementation of the Polygon PoS blockchain. It is a fork of [geth](https://github.com/ethereum/go-ethereum) and is EVM compatible (upto London fork).
 
-[![API Reference](https://pkg.go.dev/badge/github.com/0xPolygon/bor)](https://pkg.go.dev/github.com/0xPolygon/bor)
-[![Go Report Card](https://goreportcard.com/badge/github.com/0xPolygon/bor)](https://goreportcard.com/report/github.com/0xPolygon/bor)
 ![MIT License](https://img.shields.io/github/license/0xPolygon/bor)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-blue.svg)](https://discord.com/invite/0xpolygonrnd)
 [![Twitter Follow](https://img.shields.io/twitter/follow/0xPolygon.svg?style=social)](https://twitter.com/0xPolygon)
 
 ### Installing bor using packaging
 
-The easiest way to get started with bor is to install the packages using the command below. Please take a look at the [releases](https://github.com/0xPolygon/bor/releases) section to find the latest stable version of bor.
+The easiest way to get started with bor is to install the packages using the command below. Please take a look at the [releases](https://github.com/Chaintable/bor/releases) section to find the latest stable version of bor. (Chaintable CI also publishes write-node container images to a public ECR registry.)
     
     curl -L https://raw.githubusercontent.com/0xPolygon/install/main/bor.sh | bash -s -- v2.0.0 <network> <node_type>
 
