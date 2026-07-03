@@ -284,7 +284,7 @@ func TestGenesisContractChange(t *testing.T) {
 			ParentHash: root,
 			Number:     big.NewInt(num),
 		}
-		_, err = b.Finalize(chain.HeaderChain(), h, statedb, &types.Body{Withdrawals: nil, Transactions: nil, Uncles: nil}, nil)
+		_, err = b.Finalize(chain.HeaderChain(), h, statedb, &types.Body{Withdrawals: nil, Transactions: nil, Uncles: nil}, nil, nil)
 		require.NoError(t, err)
 
 		// write state to database
@@ -1188,6 +1188,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
 			nil,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -1214,6 +1215,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 				Withdrawals:  []*types.Withdrawal{{Validator: 1, Address: addr1, Amount: 100}},
 			},
 			nil,
+			nil,
 		)
 
 		require.Error(t, err)
@@ -1237,6 +1239,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			header,
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
+			nil,
 			nil,
 		)
 
@@ -1262,6 +1265,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
 			nil,
+			nil,
 		)
 
 		require.Error(t, err)
@@ -1285,6 +1289,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			header,
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
+			nil,
 			nil,
 		)
 
@@ -1313,6 +1318,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
 			inputReceipts,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -1354,6 +1360,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			stateDatabase,
 			&types.Body{Transactions: nil, Uncles: nil},
 			nil,
+			nil,
 		)
 
 		require.Error(t, finalizeErr)
@@ -1393,6 +1400,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			stateObj,
 			&types.Body{Transactions: nil, Uncles: nil},
 			nil,
+			nil,
 		)
 
 		require.Error(t, executionErr)
@@ -1430,6 +1438,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			headerObj,
 			stateDatabase,
 			&types.Body{Transactions: nil, Uncles: nil},
+			nil,
 			nil,
 		)
 
@@ -2361,7 +2370,7 @@ func TestFinalize_WithdrawalsRejection(t *testing.T) {
 	statedb := newStateDBForTest(t, genesis.Root)
 
 	body := &types.Body{Withdrawals: []*types.Withdrawal{{Validator: 1}}}
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil, nil)
 	require.Nil(t, result)
 	require.ErrorIs(t, err, consensus.ErrUnexpectedWithdrawals)
 }
@@ -2379,7 +2388,7 @@ func TestFinalize_RequestsHashRejection(t *testing.T) {
 	statedb := newStateDBForTest(t, genesis.Root)
 
 	body := &types.Body{}
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil, nil)
 	require.Nil(t, result)
 	require.ErrorIs(t, err, consensus.ErrUnexpectedRequests)
 }
@@ -2965,7 +2974,7 @@ func TestFinalize_NonSprintBlock(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(5), ParentHash: genesis.Hash(), Time: genesis.Time + 10, GasLimit: genesis.GasLimit}
 	body := &types.Body{}
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil, nil)
 	// For non-sprint blocks, Finalize returns the receipts (possibly nil)
 	// It should not error
 	require.NoError(t, err)
@@ -2987,7 +2996,7 @@ func TestFinalize_SprintBlockWithoutHeimdall(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: genesis.Time + 32, GasLimit: genesis.GasLimit}
 	body := &types.Body{}
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil, nil)
 	require.NoError(t, err)
 	require.Nil(t, result) // nil receipts expected
 }
@@ -3119,7 +3128,7 @@ func TestCommitStates_WithOverrideSkip(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: genesis.Time + 32}
 
 	// CommitStates with override that sets records to 0 should skip
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Empty(t, result)
 }
@@ -3151,7 +3160,7 @@ func TestCommitStates_WithIndore(t *testing.T) {
 
 	h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: genesis.Time + 32}
 
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Empty(t, result) // no events
 }
@@ -3194,7 +3203,7 @@ func TestCommitStates_WithEvents(t *testing.T) {
 
 	h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: uint64(now.Unix())}
 
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	require.Equal(t, uint64(1), result[0].ID)
@@ -3454,7 +3463,7 @@ func TestFinalize_SprintBlockWithCommitSpan(t *testing.T) {
 
 	body := &types.Body{}
 	inputReceipts := make([]*types.Receipt, 0)
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	// Should succeed (no HeimdallClient so CommitStates is skipped)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
@@ -3632,7 +3641,7 @@ func TestCommitStates_WithIndore_EventProcessing(t *testing.T) {
 		Time:       uint64(now.Unix()),
 	}
 
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Len(t, result, 2) // both events should be processed
 }
@@ -3686,7 +3695,7 @@ func TestCommitStates_NonIndore(t *testing.T) {
 		Time:       uint64(time.Now().Unix()),
 	}
 
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 }
@@ -3744,7 +3753,7 @@ func TestCommitStates_ValenciaBudget(t *testing.T) {
 			Time:       uint64(time.Now().Unix()),
 		}
 
-		result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+		result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 		require.NoError(t, err)
 		return result
 	}
@@ -3789,7 +3798,7 @@ func runValenciaCommitWith(t *testing.T, lastStateID uint64, events []*clerk.Eve
 		Time:       uint64(time.Now().Unix()),
 	}
 
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	return result
 }
@@ -3909,7 +3918,7 @@ func TestFinalize_NonSprintBlockNoStateSync(t *testing.T) {
 
 	body := &types.Body{}
 	inputReceipts := make([]*types.Receipt, 0)
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
 }
@@ -3973,7 +3982,7 @@ func TestFinalizeAndAssemble_WithdrawalsRejected(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(1)}
 	body := &types.Body{Withdrawals: types.Withdrawals{{}}}
 
-	_, _, _, err := b.FinalizeAndAssemble(nil, h, nil, body, nil)
+	_, _, _, err := b.FinalizeAndAssemble(nil, h, nil, body, nil, nil)
 	require.ErrorIs(t, err, consensus.ErrUnexpectedWithdrawals)
 }
 
@@ -3985,7 +3994,7 @@ func TestFinalizeAndAssemble_RequestsHashRejected(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(1), RequestsHash: &reqHash}
 	body := &types.Body{}
 
-	_, _, _, err := b.FinalizeAndAssemble(nil, h, nil, body, nil)
+	_, _, _, err := b.FinalizeAndAssemble(nil, h, nil, body, nil, nil)
 	require.ErrorIs(t, err, consensus.ErrUnexpectedRequests)
 }
 func TestVerifySeal_BlockTooSoon(t *testing.T) {
@@ -4091,7 +4100,7 @@ func TestFinalize_SprintWithHeimdallCommitStates(t *testing.T) {
 
 	body := &types.Body{}
 	inputReceipts := make([]*types.Receipt, 0)
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
 }
@@ -4184,7 +4193,7 @@ func TestFinalize_StateSyncMismatch_EmptyBody(t *testing.T) {
 	body := &types.Body{}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.ErrorIs(t, err, core.ErrStateSyncMismatch)
 	require.ErrorContains(t, err, "block body missing state-sync transaction")
 	require.Nil(t, result)
@@ -4206,7 +4215,7 @@ func TestFinalize_StateSyncMismatch_LastTxNotStateSyncType(t *testing.T) {
 	body := &types.Body{Transactions: []*types.Transaction{legacyTx}}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.ErrorIs(t, err, core.ErrStateSyncMismatch)
 	require.ErrorContains(t, err, "block body missing state-sync transaction")
 	require.Nil(t, result)
@@ -4233,7 +4242,7 @@ func TestFinalize_StateSyncMismatch_WrongHash(t *testing.T) {
 	body := &types.Body{Transactions: []*types.Transaction{wrongTx}}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.ErrorIs(t, err, core.ErrStateSyncMismatch)
 	require.ErrorContains(t, err, "hash mismatch")
 	require.Nil(t, result)
@@ -4251,7 +4260,7 @@ func TestFinalize_ValidStateSyncTx(t *testing.T) {
 	body := &types.Body{Transactions: []*types.Transaction{matchingStateSyncTx()}}
 	inputReceipts := make([]*types.Receipt, 0)
 
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
 	// Finalize should have appended the state-sync receipt
@@ -4273,7 +4282,7 @@ func TestFinalize_StateSyncProcessingError(t *testing.T) {
 	body := &types.Body{}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.ErrorIs(t, err, core.ErrStateSyncProcessing)
 	require.ErrorContains(t, err, "error while committing states")
 	require.Nil(t, result)
@@ -4291,7 +4300,7 @@ func TestFinalize_NoStateSyncEvents_EmptyBodyOK(t *testing.T) {
 	body := &types.Body{}
 	inputReceipts := make([]*types.Receipt, 0)
 
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
 	require.Len(t, receipts, 0, "no state-sync receipt expected when there are no events")
@@ -4590,7 +4599,7 @@ func TestCommitStates_WithOverrideStateSyncRecords(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	// With OverrideStateSyncRecords truncating to 0, should get empty data
 	require.Empty(t, data)
@@ -4805,7 +4814,7 @@ func TestFinalize_WithBlockAlloc(t *testing.T) {
 	body := &types.Body{}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	// Should process without error - exercises changeContractCodeIfNeeded
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -4851,7 +4860,7 @@ func TestCommitStates_WithOverrideStateSyncRecordsInRange(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Empty(t, data) // truncated to 0 by range override
 }
@@ -4890,7 +4899,7 @@ func TestCommitStates_StateSyncEventsError(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err) // error is logged but returns empty data
 	require.Empty(t, data)
 }
@@ -4940,7 +4949,7 @@ func TestCommitStates_EventIdLessThanLastStateId(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	// Event ID=3 should be skipped (3 <= 5), event ID=6 should be processed
 	require.Len(t, data, 1)
@@ -4989,7 +4998,7 @@ func TestCommitStates_EventValidationError(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err) // validation error is logged but returned data should be empty
 	require.Empty(t, data)
 }
@@ -5027,7 +5036,7 @@ func TestFinalize_CheckAndCommitSpanError(t *testing.T) {
 
 	// checkAndCommitSpan -> FetchAndCommitSpan -> CommitSpan should fail,
 	// which means Finalize returns an error
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.Error(t, err)
 	require.Nil(t, result)
 }
