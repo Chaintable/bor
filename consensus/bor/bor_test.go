@@ -3209,6 +3209,74 @@ func TestCommitStates_WithEvents(t *testing.T) {
 	require.Equal(t, uint64(1), result[0].ID)
 }
 
+func TestCommitStates_StateSyncHookLifecycleByFork(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		madhugiri  bool
+		wantStarts int
+		wantEnds   int
+	}{
+		{name: "pre-madhugiri uses legacy bor tx hooks", wantStarts: 1, wantEnds: 1},
+		{name: "post-madhugiri leaves tx lifecycle to state processor", madhugiri: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			addr1 := common.HexToAddress("0x1")
+			sp := &fakeSpanner{vals: []*valset.Validator{{Address: addr1, VotingPower: 1}}}
+			mockGC := &mockGenesisContractForCommitStatesIndore{lastStateID: 0, gasUsed: 100}
+			borCfg := indoreBorConfig()
+			if tc.madhugiri {
+				borCfg.MadhugiriBlock = big.NewInt(0)
+			}
+			chain, b := newChainAndBorForTest(t, sp, borCfg, true, addr1, uint64(time.Now().Unix())-200)
+			b.GenesisContractsClient = mockGC
+
+			now := time.Now()
+			b.SetHeimdallClient(&mockHeimdallClient{
+				span: &borTypes.Span{
+					Id: 0, StartBlock: 0, EndBlock: 255, BorChainId: "1",
+					ValidatorSet: stakeTypes.ValidatorSet{
+						Validators: []*stakeTypes.Validator{{ValId: 1, Signer: addr1.Hex(), VotingPower: 1}},
+					},
+					SelectedProducers: []stakeTypes.Validator{{ValId: 1, Signer: addr1.Hex(), VotingPower: 1}},
+				},
+				events: []*clerk.EventRecordWithTime{{
+					EventRecord: clerk.EventRecord{
+						ID:       1,
+						Contract: common.HexToAddress("0x1001"),
+						Data:     []byte{0x01},
+						ChainID:  "1",
+					},
+					Time: now.Add(-60 * time.Second),
+				}},
+			})
+
+			genesis := chain.HeaderChain().GetHeaderByNumber(0)
+			statedb := newStateDBForTest(t, genesis.Root)
+			h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: uint64(now.Unix())}
+
+			var starts, ends int
+			hooks := &tracing.Hooks{
+				OnBorTxStart: func(common.Hash) {
+					starts++
+				},
+				OnTxEnd: func(*types.Receipt, error) {
+					ends++
+				},
+			}
+
+			result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, hooks)
+			require.NoError(t, err)
+			require.Len(t, result, 1)
+			require.Equal(t, tc.wantStarts, starts)
+			require.Equal(t, tc.wantEnds, ends)
+		})
+	}
+}
+
 // mockHeimdallClient is a configurable mock for IHeimdallClient.
 // It supports span, events, and optional function overrides for error injection.
 type mockHeimdallClient struct {

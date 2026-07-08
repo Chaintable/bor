@@ -1870,12 +1870,17 @@ func (c *Bor) CommitStates(
 	}
 
 	vmCfg := c.vmConfig
-	txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(header.Number.Uint64(), header.Hash()))
+	isMadhugiri := c.config != nil && c.config.IsMadhugiri(header.Number)
 	if tracer != nil {
-		stateReceiverContract := common.HexToAddress(c.config.StateReceiverContract)
-		vmCfg.Tracer = live.NewBorStateSyncTxnTracer(tracer, stateReceiverContract)
+		if isMadhugiri {
+			vmCfg.Tracer = tracer
+		} else {
+			stateReceiverContract := common.HexToAddress(c.config.StateReceiverContract)
+			vmCfg.Tracer = live.NewBorStateSyncTxnTracer(tracer, stateReceiverContract)
+		}
 	}
-	if totalStateSyncData > 0 {
+	if totalStateSyncData > 0 && !isMadhugiri {
+		txHash := types.GetDerivedBorTxHash(types.BorReceiptKey(header.Number.Uint64(), header.Hash()))
 		if vmCfg.Tracer != nil && vmCfg.Tracer.OnBorTxStart != nil {
 			vmCfg.Tracer.OnBorTxStart(txHash)
 		}
