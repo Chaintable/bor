@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/tracing"
-	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/eth/tracers/live"
 	"github.com/ethereum/go-ethereum/log"
@@ -263,7 +263,13 @@ func (api *DebankAPI) DebankBlock(ctx context.Context, blockNrOrHash rpc.BlockNu
 	rpcTracer.OnBlockStart(block)
 
 	// Process the block using the standard processor
-	_, err = api.eth.BlockChain().Processor().Process(block, statedb, vm.Config{Tracer: tracer.Hooks}, nil, ctx)
+	vmCfg := *api.eth.BlockChain().GetVMConfig()
+	vmCfg.Tracer = tracer.Hooks
+	if txs := block.Transactions(); len(txs) > 0 && txs[len(txs)-1].Type() == types.StateSyncTxType && config.Bor != nil && config.Bor.IsMadhugiri(block.Number()) {
+		stateReceiver := common.HexToAddress(config.Bor.StateReceiverContract)
+		vmCfg.Tracer = tracers.WrapStateSyncHooks(vmCfg.Tracer, stateReceiver)
+	}
+	_, err = api.eth.BlockChain().Processor().Process(block, statedb, vmCfg, nil, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("could not process block: %w", err)
 	}

@@ -223,6 +223,22 @@ const (
 
 	MaxBlockSize = 8_388_608 // maximum size of an RLP-encoded block
 
+	// MaxStateSyncBytesPerBlock caps the cumulative state-sync record data committed
+	// in a single Bor block from the Valencia fork onward. Heimdall serves state-sync
+	// records in an unbounded batch; without a cap a large backlog of individually
+	// valid records produces a block that exceeds MaxBlockSize and the p2p message
+	// limit, so it cannot propagate. Overflow records are deferred to later
+	// sprint-start blocks. 1 MiB is ~34 max-size (30 KB) records, far above observed
+	// normal block sizes yet well within MaxBlockSize.
+	MaxStateSyncBytesPerBlock = 1 << 20 // 1 MiB
+
+	// MaxStateSyncRecordBytes mirrors Heimdall's per-record cap (helper.MaxStateSyncSize).
+	// The per-block budget above must stay larger so at least one record always fits.
+	MaxStateSyncRecordBytes = 30_000
+
+	// Build fails if the budget ever drops below the per-record cap (uint underflow).
+	_ = uint(MaxStateSyncBytesPerBlock - MaxStateSyncRecordBytes - 1)
+
 	// BorDefaultMinerGasPrice defines the minimum gas price to mine a transaction.
 	BorDefaultMinerGasPrice = 25 * GWei
 
@@ -246,6 +262,10 @@ var (
 	MinimumDifficulty      = big.NewInt(131072) // The minimum that the difficulty may ever be.
 	DurationLimit          = big.NewInt(13)     // The decision boundary on the blocktime duration used to determine whether difficulty should go up or not.
 )
+
+// BorSystemAddress is used for doing system transactions for processing bor bridge events
+// i.e. state-sync events.
+var BorSystemAddress = common.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE")
 
 // System contracts.
 var (

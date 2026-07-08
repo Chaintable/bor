@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -67,7 +69,7 @@ func (s *fakeSpanner) GetCurrentValidatorsByHash(ctx context.Context, headerHash
 func (s *fakeSpanner) GetCurrentValidatorsByBlockNrOrHash(ctx context.Context, _ rpc.BlockNumberOrHash, _ uint64) ([]*valset.Validator, error) {
 	return s.vals, nil
 }
-func (s *fakeSpanner) CommitSpan(ctx context.Context, _ borTypes.Span, _ []stakeTypes.MinimalVal, _ []stakeTypes.MinimalVal, _ vm.StateDB, _ *types.Header, _ core.ChainContext) error {
+func (s *fakeSpanner) CommitSpan(ctx context.Context, _ borTypes.Span, _ []stakeTypes.MinimalVal, _ []stakeTypes.MinimalVal, _ vm.StateDB, _ *types.Header, _ core.ChainContext, _ vm.Config) error {
 	if s.shouldFailCommit {
 		return errors.New("span commit failed")
 	}
@@ -80,7 +82,7 @@ type failingHeimdallClient struct{}
 // failingGenesisContract simulates GenesisContract failures
 type failingGenesisContract struct{}
 
-func (f *failingGenesisContract) CommitState(event *clerk.EventRecordWithTime, state vm.StateDB, header *types.Header, chCtx statefull.ChainContext) (uint64, error) {
+func (f *failingGenesisContract) CommitState(event *clerk.EventRecordWithTime, state vm.StateDB, header *types.Header, chCtx statefull.ChainContext, vmCfg vm.Config) (uint64, error) {
 	return 0, errors.New("commit state failed")
 }
 
@@ -282,7 +284,7 @@ func TestGenesisContractChange(t *testing.T) {
 			ParentHash: root,
 			Number:     big.NewInt(num),
 		}
-		_, err = b.Finalize(chain.HeaderChain(), h, statedb, &types.Body{Withdrawals: nil, Transactions: nil, Uncles: nil}, nil)
+		_, err = b.Finalize(chain.HeaderChain(), h, statedb, &types.Body{Withdrawals: nil, Transactions: nil, Uncles: nil}, nil, nil)
 		require.NoError(t, err)
 
 		// write state to database
@@ -1186,6 +1188,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
 			nil,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -1212,6 +1215,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 				Withdrawals:  []*types.Withdrawal{{Validator: 1, Address: addr1, Amount: 100}},
 			},
 			nil,
+			nil,
 		)
 
 		require.Error(t, err)
@@ -1235,6 +1239,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			header,
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
+			nil,
 			nil,
 		)
 
@@ -1260,6 +1265,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
 			nil,
+			nil,
 		)
 
 		require.Error(t, err)
@@ -1283,6 +1289,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			header,
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
+			nil,
 			nil,
 		)
 
@@ -1311,6 +1318,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			statedb,
 			&types.Body{Transactions: nil, Uncles: nil},
 			inputReceipts,
+			nil,
 		)
 
 		require.NoError(t, err)
@@ -1352,6 +1360,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			stateDatabase,
 			&types.Body{Transactions: nil, Uncles: nil},
 			nil,
+			nil,
 		)
 
 		require.Error(t, finalizeErr)
@@ -1391,6 +1400,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			stateObj,
 			&types.Body{Transactions: nil, Uncles: nil},
 			nil,
+			nil,
 		)
 
 		require.Error(t, executionErr)
@@ -1428,6 +1438,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 			headerObj,
 			stateDatabase,
 			&types.Body{Transactions: nil, Uncles: nil},
+			nil,
 			nil,
 		)
 
@@ -1598,6 +1609,37 @@ func TestValidateEventRecord(t *testing.T) {
 		err := validateEventRecord(event, 100, to, 41, "137")
 		require.Error(t, err)
 	})
+}
+
+func TestStateSyncBudgetExceeded(t *testing.T) {
+	t.Parallel()
+
+	const budget = params.MaxStateSyncBytesPerBlock
+
+	tests := []struct {
+		name          string
+		enforce       bool
+		includedBytes uint64
+		recordSize    uint64
+		want          bool
+	}{
+		{"pre-fork never enforces", false, budget, budget, false},
+		{"pre-fork ignores oversized record", false, 0, budget * 2, false},
+		{"first record within budget", true, 0, 30_000, false},
+		{"running total below budget", true, budget - 60_000, 30_000, false},
+		{"exactly at budget fits", true, budget - 30_000, 30_000, false},
+		{"one byte over budget defers", true, budget - 30_000, 30_001, true},
+		{"single record larger than budget defers", true, 0, budget + 1, true},
+		{"full batch then next record defers", true, budget, 1, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := stateSyncBudgetExceeded(tt.enforce, tt.includedBytes, tt.recordSize)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestBorRLP(t *testing.T) {
@@ -2040,6 +2082,20 @@ func TestAPIs_ReturnsBorNamespace(t *testing.T) {
 	require.Equal(t, "1.0", apis[0].Version)
 }
 
+// TestAPIs_ReturnsSameInstanceAcrossCalls verifies that repeated calls to APIs() must return the same *API
+// so per-API state such as rootHashCache persists across calls. This matters for the gRPC backend
+// which fetches APIs() on every handler invocation; returning a fresh *API each call defeats caching.
+func TestAPIs_ReturnsSameInstanceAcrossCalls(t *testing.T) {
+	t.Parallel()
+	sp := &fakeSpanner{vals: []*valset.Validator{{Address: common.HexToAddress("0x1"), VotingPower: 1}}}
+	borCfg := defaultBorConfig()
+	chain, b := newChainAndBorForTest(t, sp, borCfg, false, common.Address{}, uint64(time.Now().Unix()))
+
+	first := b.APIs(chain.HeaderChain())
+	second := b.APIs(chain.HeaderChain())
+	require.Same(t, first[0].Service, second[0].Service, "APIs must return the cached *API on repeated calls")
+}
+
 func TestClose_Idempotent(t *testing.T) {
 	t.Parallel()
 	sp := &fakeSpanner{vals: []*valset.Validator{{Address: common.HexToAddress("0x1"), VotingPower: 1}}}
@@ -2314,7 +2370,7 @@ func TestFinalize_WithdrawalsRejection(t *testing.T) {
 	statedb := newStateDBForTest(t, genesis.Root)
 
 	body := &types.Body{Withdrawals: []*types.Withdrawal{{Validator: 1}}}
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil, nil)
 	require.Nil(t, result)
 	require.ErrorIs(t, err, consensus.ErrUnexpectedWithdrawals)
 }
@@ -2332,7 +2388,7 @@ func TestFinalize_RequestsHashRejection(t *testing.T) {
 	statedb := newStateDBForTest(t, genesis.Root)
 
 	body := &types.Body{}
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil, nil)
 	require.Nil(t, result)
 	require.ErrorIs(t, err, consensus.ErrUnexpectedRequests)
 }
@@ -2351,7 +2407,7 @@ func TestNew(t *testing.T) {
 
 	sp := &fakeSpanner{vals: []*valset.Validator{{Address: common.HexToAddress("0x1"), VotingPower: 1}}}
 
-	engine := New(chainCfg, db, nil, sp, nil, nil, nil, false, 0)
+	engine := New(chainCfg, db, nil, sp, nil, nil, nil, false, 0, vm.Config{})
 	require.NotNil(t, engine)
 	require.NotNil(t, engine.recents)
 	require.NotNil(t, engine.signatures)
@@ -2371,7 +2427,7 @@ func TestNew_DefaultSprintFallback(t *testing.T) {
 	db := rawdb.NewMemoryDatabase()
 	sp := &fakeSpanner{vals: []*valset.Validator{{Address: common.HexToAddress("0x1"), VotingPower: 1}}}
 
-	engine := New(chainCfg, db, nil, sp, nil, nil, nil, false, 0)
+	engine := New(chainCfg, db, nil, sp, nil, nil, nil, false, 0, vm.Config{})
 	require.NotNil(t, engine)
 	require.Equal(t, uint64(64), engine.config.CalculateSprint(0))
 	require.Equal(t, uint64(64), engine.chainConfig.Bor.CalculateSprint(0))
@@ -2386,7 +2442,7 @@ func TestNew_DefaultAuthorizedSignerReturnsUnauthorizedError(t *testing.T) {
 		Period: map[string]uint64{"0": 2},
 	}
 	chainCfg := &params.ChainConfig{ChainID: big.NewInt(1), Bor: borCfg}
-	engine := New(chainCfg, rawdb.NewMemoryDatabase(), nil, &fakeSpanner{}, nil, nil, nil, false, 0)
+	engine := New(chainCfg, rawdb.NewMemoryDatabase(), nil, &fakeSpanner{}, nil, nil, nil, false, 0, vm.Config{})
 	defer func() {
 		require.NoError(t, engine.Close())
 	}()
@@ -2652,6 +2708,222 @@ func TestSeal_AuthorizedSigner(t *testing.T) {
 	}
 }
 
+// TestSeal_BlocksOnFullResultChannelInsteadOfSilentDrop is a regression test
+// for the silent-drop in Bor.Seal's result-delivery goroutine.
+//
+// Bug: the goroutine's second select used `default` as the not-sent path:
+//
+//	select {
+//	case results <- &consensus.NewSealedBlockEvent{...}:
+//	default:
+//	    log.Warn("Sealing result was not read by miner", ...)
+//	}
+//
+// When the result channel had no ready receiver (e.g., resultLoop blocked on
+// a slow chain.WriteBlockAndSetHead under elephant-contract load), `default`
+// fired immediately and the result was discarded without posting. The
+// worker's pendingTasks entry for this sealhash would then leak: resultLoop
+// never received it, never deleted it, and the producer's veblop fallback
+// would short-circuit on hasPendingTasks > 0 every tick afterwards. This is
+// post-mortem candidate 2 for the 2026-05-07 Amoy val4 stall.
+//
+// Fix: replace `default` with `case <-stop` so the goroutine either delivers
+// or exits cleanly on interrupt. The taskLoop's interrupt() (with its
+// pendingTasks-delete companion fix) is then the single place that cleans
+// up on the stop path.
+//
+// Test scheme: drive Seal with a zero-buffer results channel and NO reader
+// initially. With the bug, the goroutine immediately drops via `default`
+// and a subsequent receive times out. With the fix, the goroutine blocks
+// on send until our receive arrives, and we get the result back.
+func TestSeal_BlocksOnFullResultChannelInsteadOfSilentDrop(t *testing.T) {
+	t.Parallel()
+	setup := newSignedChainSetup(t)
+	b := setup.bor
+	b.fakeDiff = true
+
+	b.Authorize(setup.signerAddr, func(account accounts.Account, mimeType string, data []byte) ([]byte, error) {
+		return crypto.Sign(crypto.Keccak256(data), setup.privKey)
+	})
+
+	h := setup.makeSignedHeader(t, 1, setup.genesis)
+	// Use a Time slightly in the future so the goroutine exercises a real
+	// time.After(delay) wait. We need a non-trivial delay so we can ensure
+	// the goroutine reaches the second select *before* our receive — that
+	// is the precise condition under which the buggy `default` branch
+	// would fire (no receiver ready, no buffer slot, no fallback).
+	const delaySec = 1
+	h.Time = uint64(time.Now().Unix()) + delaySec
+
+	body := &types.Body{Transactions: types.Transactions{types.NewTx(&types.LegacyTx{})}}
+	block := types.NewBlock(h, body, nil, trie.NewStackTrie(nil))
+
+	// Zero-buffer channel + no receiver-ready at the moment the goroutine
+	// reaches the second select. Pre-fix: `default` fires → silent drop.
+	// Post-fix: send blocks until either a receiver pairs with it or stop
+	// closes — neither happens here, so the goroutine remains parked on
+	// send and our delayed receive pairs with it.
+	results := make(chan *consensus.NewSealedBlockEvent)
+	stop := make(chan struct{})
+
+	err := b.Seal(setup.chain.HeaderChain(), block, nil, results, stop)
+	require.NoError(t, err, "Seal should return nil and spawn the sealing goroutine")
+
+	// Wait long enough for the goroutine's time.After(delay) to fire AND
+	// for it to advance into the second select. This is the critical
+	// ordering: with the bug, by the time we start receiving below the
+	// goroutine has already taken the silent `default` path. With the fix
+	// the goroutine is parked on the send waiting for any receiver.
+	time.Sleep(time.Duration(delaySec)*time.Second + 500*time.Millisecond)
+
+	select {
+	case ev := <-results:
+		require.NotNil(t, ev, "expected a sealed block event")
+		require.NotNil(t, ev.Block, "expected ev.Block to be non-nil")
+		require.Equal(t, block.NumberU64(), ev.Block.NumberU64(),
+			"sealed block number should match the input block")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Bor.Seal silently dropped the result via the second-select default branch; " +
+			"expected the goroutine to remain blocked on send (or exit on <-stop) instead. " +
+			"This was the leak path for val4-style \"elected but silent\" stalls under load.")
+	}
+}
+
+// TestSealWithStopHook_FirstSelectStopBranch verifies onStopExit is invoked
+// when stop fires before the delay timer.
+func TestSealWithStopHook_FirstSelectStopBranch(t *testing.T) {
+	t.Parallel()
+	setup := newSignedChainSetup(t)
+	b := setup.bor
+	b.fakeDiff = true
+
+	b.Authorize(setup.signerAddr, func(account accounts.Account, mimeType string, data []byte) ([]byte, error) {
+		return crypto.Sign(crypto.Keccak256(data), setup.privKey)
+	})
+
+	h := setup.makeSignedHeader(t, 1, setup.genesis)
+	h.Time = uint64(time.Now().Unix()) + 30
+
+	body := &types.Body{Transactions: types.Transactions{types.NewTx(&types.LegacyTx{})}}
+	block := types.NewBlock(h, body, nil, trie.NewStackTrie(nil))
+
+	results := make(chan *consensus.NewSealedBlockEvent, 1)
+	stop := make(chan struct{})
+
+	var hookCalls atomic.Int32
+	hookDone := make(chan struct{})
+	onStopExit := func() {
+		hookCalls.Add(1)
+		close(hookDone)
+	}
+
+	err := b.SealWithStopHook(setup.chain.HeaderChain(), block, nil, results, stop, onStopExit)
+	require.NoError(t, err)
+
+	// Give the goroutine a moment to enter the first select.
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+
+	select {
+	case <-hookDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("onStopExit was not invoked on first-select stop-branch exit")
+	}
+	require.Equal(t, int32(1), hookCalls.Load(), "hook must be called exactly once")
+
+	select {
+	case ev := <-results:
+		t.Fatalf("unexpected result on stop-branch exit: %+v", ev)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// TestSealWithStopHook_SecondSelectStopBranch verifies onStopExit is invoked
+// when stop fires after the delay timer but before the result send completes.
+func TestSealWithStopHook_SecondSelectStopBranch(t *testing.T) {
+	t.Parallel()
+	setup := newSignedChainSetup(t)
+	b := setup.bor
+	b.fakeDiff = true
+
+	b.Authorize(setup.signerAddr, func(account accounts.Account, mimeType string, data []byte) ([]byte, error) {
+		return crypto.Sign(crypto.Keccak256(data), setup.privKey)
+	})
+
+	h := setup.makeSignedHeader(t, 1, setup.genesis)
+	h.Time = uint64(time.Now().Unix()) + 1
+
+	body := &types.Body{Transactions: types.Transactions{types.NewTx(&types.LegacyTx{})}}
+	block := types.NewBlock(h, body, nil, trie.NewStackTrie(nil))
+
+	// Zero-buffer + no reader: goroutine parks on send in the second select.
+	results := make(chan *consensus.NewSealedBlockEvent)
+	stop := make(chan struct{})
+
+	var hookCalls atomic.Int32
+	hookDone := make(chan struct{})
+	onStopExit := func() {
+		hookCalls.Add(1)
+		close(hookDone)
+	}
+
+	err := b.SealWithStopHook(setup.chain.HeaderChain(), block, nil, results, stop, onStopExit)
+	require.NoError(t, err)
+
+	time.Sleep(1500 * time.Millisecond)
+	close(stop)
+
+	select {
+	case <-hookDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("onStopExit was not invoked on second-select stop-branch exit")
+	}
+	require.Equal(t, int32(1), hookCalls.Load(), "hook must be called exactly once")
+}
+
+// TestSealWithStopHook_NotCalledOnSuccess verifies onStopExit is NOT invoked
+// when the goroutine delivers the result successfully — otherwise the
+// success path would race with cleanup and drop valid blocks.
+func TestSealWithStopHook_NotCalledOnSuccess(t *testing.T) {
+	t.Parallel()
+	setup := newSignedChainSetup(t)
+	b := setup.bor
+	b.fakeDiff = true
+
+	b.Authorize(setup.signerAddr, func(account accounts.Account, mimeType string, data []byte) ([]byte, error) {
+		return crypto.Sign(crypto.Keccak256(data), setup.privKey)
+	})
+
+	h := setup.makeSignedHeader(t, 1, setup.genesis)
+	h.Time = uint64(time.Now().Unix()) + 1
+
+	body := &types.Body{Transactions: types.Transactions{types.NewTx(&types.LegacyTx{})}}
+	block := types.NewBlock(h, body, nil, trie.NewStackTrie(nil))
+
+	results := make(chan *consensus.NewSealedBlockEvent, 1)
+	stop := make(chan struct{})
+
+	var hookCalls atomic.Int32
+	onStopExit := func() {
+		hookCalls.Add(1)
+	}
+
+	err := b.SealWithStopHook(setup.chain.HeaderChain(), block, nil, results, stop, onStopExit)
+	require.NoError(t, err)
+
+	select {
+	case ev := <-results:
+		require.NotNil(t, ev)
+		require.NotNil(t, ev.Block)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for sealed block on success path")
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, int32(0), hookCalls.Load(),
+		"onStopExit must NOT be called on success-branch exit")
+}
+
 func TestSeal_UnauthorizedSigner(t *testing.T) {
 	t.Parallel()
 
@@ -2702,7 +2974,7 @@ func TestFinalize_NonSprintBlock(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(5), ParentHash: genesis.Hash(), Time: genesis.Time + 10, GasLimit: genesis.GasLimit}
 	body := &types.Body{}
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil, nil)
 	// For non-sprint blocks, Finalize returns the receipts (possibly nil)
 	// It should not error
 	require.NoError(t, err)
@@ -2724,7 +2996,7 @@ func TestFinalize_SprintBlockWithoutHeimdall(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: genesis.Time + 32, GasLimit: genesis.GasLimit}
 	body := &types.Body{}
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, nil, nil)
 	require.NoError(t, err)
 	require.Nil(t, result) // nil receipts expected
 }
@@ -2856,7 +3128,7 @@ func TestCommitStates_WithOverrideSkip(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: genesis.Time + 32}
 
 	// CommitStates with override that sets records to 0 should skip
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Empty(t, result)
 }
@@ -2888,7 +3160,7 @@ func TestCommitStates_WithIndore(t *testing.T) {
 
 	h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: genesis.Time + 32}
 
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Empty(t, result) // no events
 }
@@ -2931,10 +3203,78 @@ func TestCommitStates_WithEvents(t *testing.T) {
 
 	h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: uint64(now.Unix())}
 
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	require.Equal(t, uint64(1), result[0].ID)
+}
+
+func TestCommitStates_StateSyncHookLifecycleByFork(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		madhugiri  bool
+		wantStarts int
+		wantEnds   int
+	}{
+		{name: "pre-madhugiri uses legacy bor tx hooks", wantStarts: 1, wantEnds: 1},
+		{name: "post-madhugiri leaves tx lifecycle to state processor", madhugiri: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			addr1 := common.HexToAddress("0x1")
+			sp := &fakeSpanner{vals: []*valset.Validator{{Address: addr1, VotingPower: 1}}}
+			mockGC := &mockGenesisContractForCommitStatesIndore{lastStateID: 0, gasUsed: 100}
+			borCfg := indoreBorConfig()
+			if tc.madhugiri {
+				borCfg.MadhugiriBlock = big.NewInt(0)
+			}
+			chain, b := newChainAndBorForTest(t, sp, borCfg, true, addr1, uint64(time.Now().Unix())-200)
+			b.GenesisContractsClient = mockGC
+
+			now := time.Now()
+			b.SetHeimdallClient(&mockHeimdallClient{
+				span: &borTypes.Span{
+					Id: 0, StartBlock: 0, EndBlock: 255, BorChainId: "1",
+					ValidatorSet: stakeTypes.ValidatorSet{
+						Validators: []*stakeTypes.Validator{{ValId: 1, Signer: addr1.Hex(), VotingPower: 1}},
+					},
+					SelectedProducers: []stakeTypes.Validator{{ValId: 1, Signer: addr1.Hex(), VotingPower: 1}},
+				},
+				events: []*clerk.EventRecordWithTime{{
+					EventRecord: clerk.EventRecord{
+						ID:       1,
+						Contract: common.HexToAddress("0x1001"),
+						Data:     []byte{0x01},
+						ChainID:  "1",
+					},
+					Time: now.Add(-60 * time.Second),
+				}},
+			})
+
+			genesis := chain.HeaderChain().GetHeaderByNumber(0)
+			statedb := newStateDBForTest(t, genesis.Root)
+			h := &types.Header{Number: big.NewInt(16), ParentHash: genesis.Hash(), Time: uint64(now.Unix())}
+
+			var starts, ends int
+			hooks := &tracing.Hooks{
+				OnBorTxStart: func(common.Hash) {
+					starts++
+				},
+				OnTxEnd: func(*types.Receipt, error) {
+					ends++
+				},
+			}
+
+			result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, hooks)
+			require.NoError(t, err)
+			require.Len(t, result, 1)
+			require.Equal(t, tc.wantStarts, starts)
+			require.Equal(t, tc.wantEnds, ends)
+		})
+	}
 }
 
 // mockHeimdallClient is a configurable mock for IHeimdallClient.
@@ -2979,6 +3319,7 @@ func (m *mockHeimdallClient) FetchMilestoneCount(ctx context.Context) (int64, er
 func (m *mockHeimdallClient) FetchStatus(ctx context.Context) (*ctypes.SyncInfo, error) {
 	return &ctypes.SyncInfo{CatchingUp: false}, nil
 }
+
 func TestEncodeSigHeader_WithBaseFee(t *testing.T) {
 	t.Parallel()
 	h := &types.Header{
@@ -3190,7 +3531,7 @@ func TestFinalize_SprintBlockWithCommitSpan(t *testing.T) {
 
 	body := &types.Body{}
 	inputReceipts := make([]*types.Receipt, 0)
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	// Should succeed (no HeimdallClient so CommitStates is skipped)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
@@ -3308,7 +3649,7 @@ type mockGenesisContractForCommitStatesIndore struct {
 	gasUsed     uint64
 }
 
-func (m *mockGenesisContractForCommitStatesIndore) CommitState(event *clerk.EventRecordWithTime, state vm.StateDB, header *types.Header, chCtx statefull.ChainContext) (uint64, error) {
+func (m *mockGenesisContractForCommitStatesIndore) CommitState(event *clerk.EventRecordWithTime, state vm.StateDB, header *types.Header, chCtx statefull.ChainContext, vmCfg vm.Config) (uint64, error) {
 	return m.gasUsed, nil
 }
 
@@ -3368,7 +3709,7 @@ func TestCommitStates_WithIndore_EventProcessing(t *testing.T) {
 		Time:       uint64(now.Unix()),
 	}
 
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Len(t, result, 2) // both events should be processed
 }
@@ -3422,9 +3763,184 @@ func TestCommitStates_NonIndore(t *testing.T) {
 		Time:       uint64(time.Now().Unix()),
 	}
 
-	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
+}
+
+// TestCommitStates_ValenciaBudget verifies the per-block state-sync byte budget
+// introduced at Valencia: a backlog whose cumulative data exceeds the cap is
+// truncated to the records that fit, with the remainder deferred. Pre-Valencia
+// the full backlog is committed unchanged.
+func TestCommitStates_ValenciaBudget(t *testing.T) {
+	t.Parallel()
+
+	const recordSize = 30_000 // Heimdall's per-record max
+	// Largest k with k*recordSize <= MaxStateSyncBytesPerBlock; record k+1 is deferred.
+	fitting := params.MaxStateSyncBytesPerBlock / recordSize
+	totalRecords := fitting + 6
+
+	buildEvents := func() []*clerk.EventRecordWithTime {
+		eventTime := time.Now().Add(-60 * time.Second)
+		events := make([]*clerk.EventRecordWithTime, 0, totalRecords)
+		for i := 1; i <= totalRecords; i++ {
+			events = append(events, &clerk.EventRecordWithTime{
+				EventRecord: clerk.EventRecord{
+					ID:       uint64(i),
+					Contract: common.HexToAddress("0x1001"),
+					Data:     make([]byte, recordSize),
+					ChainID:  "1",
+				},
+				Time: eventTime,
+			})
+		}
+		return events
+	}
+
+	runCommit := func(t *testing.T, valenciaBlock *big.Int) []*types.StateSyncData {
+		t.Helper()
+		addr1 := common.HexToAddress("0x1")
+		sp := &fakeSpanner{vals: []*valset.Validator{{Address: addr1, VotingPower: 1}}}
+		borCfg := &params.BorConfig{
+			Sprint:                     map[string]uint64{"0": 16},
+			Period:                     map[string]uint64{"0": 2},
+			IndoreBlock:                big.NewInt(0),
+			StateSyncConfirmationDelay: map[string]uint64{"0": 0},
+			RioBlock:                   big.NewInt(1000000),
+			ValenciaBlock:              valenciaBlock,
+		}
+		chain, b := newChainAndBorForTest(t, sp, borCfg, true, addr1, uint64(time.Now().Unix())-200)
+		b.GenesisContractsClient = &mockGenesisContractForCommitStatesIndore{lastStateID: 0, gasUsed: 100}
+		b.SetHeimdallClient(&mockHeimdallClient{events: buildEvents()})
+
+		genesis := chain.HeaderChain().GetHeaderByNumber(0)
+		statedb := newStateDBForTest(t, genesis.Root)
+		h := &types.Header{
+			Number:     big.NewInt(16),
+			ParentHash: genesis.Hash(),
+			Time:       uint64(time.Now().Unix()),
+		}
+
+		result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
+		require.NoError(t, err)
+		return result
+	}
+
+	t.Run("pre-valencia commits full backlog", func(t *testing.T) {
+		t.Parallel()
+		result := runCommit(t, nil)
+		require.Len(t, result, totalRecords)
+	})
+
+	t.Run("valencia caps and defers overflow", func(t *testing.T) {
+		t.Parallel()
+		result := runCommit(t, big.NewInt(0))
+		require.Len(t, result, fitting)
+		// Included records stay contiguous from the first pending ID.
+		require.Equal(t, uint64(1), result[0].ID)
+		require.Equal(t, uint64(fitting), result[len(result)-1].ID)
+	})
+}
+
+func runValenciaCommitWith(t *testing.T, lastStateID uint64, events []*clerk.EventRecordWithTime) []*types.StateSyncData {
+	t.Helper()
+	addr1 := common.HexToAddress("0x1")
+	sp := &fakeSpanner{vals: []*valset.Validator{{Address: addr1, VotingPower: 1}}}
+	borCfg := &params.BorConfig{
+		Sprint:                     map[string]uint64{"0": 16},
+		Period:                     map[string]uint64{"0": 2},
+		IndoreBlock:                big.NewInt(0),
+		StateSyncConfirmationDelay: map[string]uint64{"0": 0},
+		RioBlock:                   big.NewInt(1000000),
+		ValenciaBlock:              big.NewInt(0),
+	}
+	chain, b := newChainAndBorForTest(t, sp, borCfg, true, addr1, uint64(time.Now().Unix())-200)
+	b.GenesisContractsClient = &mockGenesisContractForCommitStatesIndore{lastStateID: lastStateID, gasUsed: 100}
+	b.SetHeimdallClient(&mockHeimdallClient{events: events})
+
+	genesis := chain.HeaderChain().GetHeaderByNumber(0)
+	statedb := newStateDBForTest(t, genesis.Root)
+	h := &types.Header{
+		Number:     big.NewInt(16),
+		ParentHash: genesis.Hash(),
+		Time:       uint64(time.Now().Unix()),
+	}
+
+	result, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
+	require.NoError(t, err)
+	return result
+}
+
+// A record bigger than the whole budget must still be committed, never deferred forever.
+func TestCommitStates_ValenciaProgressGuarantee(t *testing.T) {
+	t.Parallel()
+
+	eventTime := time.Now().Add(-60 * time.Second)
+	oversized := &clerk.EventRecordWithTime{
+		EventRecord: clerk.EventRecord{
+			ID:       1,
+			Contract: common.HexToAddress("0x1001"),
+			Data:     make([]byte, params.MaxStateSyncBytesPerBlock+1),
+			ChainID:  "1",
+		},
+		Time: eventTime,
+	}
+
+	t.Run("oversized lone record is committed, not wedged", func(t *testing.T) {
+		t.Parallel()
+		result := runValenciaCommitWith(t, 0, []*clerk.EventRecordWithTime{oversized})
+		require.Len(t, result, 1)
+		require.Equal(t, uint64(1), result[0].ID)
+	})
+
+	t.Run("oversized first record commits alone, remainder deferred", func(t *testing.T) {
+		t.Parallel()
+		normal := &clerk.EventRecordWithTime{
+			EventRecord: clerk.EventRecord{
+				ID:       2,
+				Contract: common.HexToAddress("0x1001"),
+				Data:     make([]byte, 30_000),
+				ChainID:  "1",
+			},
+			Time: eventTime,
+		}
+		result := runValenciaCommitWith(t, 0, []*clerk.EventRecordWithTime{oversized, normal})
+		require.Len(t, result, 1)
+		require.Equal(t, uint64(1), result[0].ID)
+	})
+}
+
+// A backlog too big for one block should fully drain over the following blocks.
+func TestCommitStates_ValenciaBacklogDrains(t *testing.T) {
+	t.Parallel()
+
+	const recordSize = 30_000
+	fitting := params.MaxStateSyncBytesPerBlock / recordSize
+	total := fitting + 6
+
+	eventTime := time.Now().Add(-60 * time.Second)
+	events := make([]*clerk.EventRecordWithTime, 0, total)
+	for i := 1; i <= total; i++ {
+		events = append(events, &clerk.EventRecordWithTime{
+			EventRecord: clerk.EventRecord{
+				ID:       uint64(i),
+				Contract: common.HexToAddress("0x1001"),
+				Data:     make([]byte, recordSize),
+				ChainID:  "1",
+			},
+			Time: eventTime,
+		})
+	}
+
+	first := runValenciaCommitWith(t, 0, events)
+	require.Len(t, first, fitting)
+	require.Equal(t, uint64(1), first[0].ID)
+	require.Equal(t, uint64(fitting), first[len(first)-1].ID)
+
+	second := runValenciaCommitWith(t, uint64(fitting), events)
+	require.Len(t, second, total-fitting)
+	require.Equal(t, uint64(fitting+1), second[0].ID)
+	require.Equal(t, uint64(total), second[len(second)-1].ID)
 }
 
 // StateSyncEvents error path removed - waitUntilHeimdallIsSynced blocks
@@ -3470,7 +3986,7 @@ func TestFinalize_NonSprintBlockNoStateSync(t *testing.T) {
 
 	body := &types.Body{}
 	inputReceipts := make([]*types.Receipt, 0)
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
 }
@@ -3534,7 +4050,7 @@ func TestFinalizeAndAssemble_WithdrawalsRejected(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(1)}
 	body := &types.Body{Withdrawals: types.Withdrawals{{}}}
 
-	_, _, _, err := b.FinalizeAndAssemble(nil, h, nil, body, nil)
+	_, _, _, err := b.FinalizeAndAssemble(nil, h, nil, body, nil, nil)
 	require.ErrorIs(t, err, consensus.ErrUnexpectedWithdrawals)
 }
 
@@ -3546,7 +4062,7 @@ func TestFinalizeAndAssemble_RequestsHashRejected(t *testing.T) {
 	h := &types.Header{Number: big.NewInt(1), RequestsHash: &reqHash}
 	body := &types.Body{}
 
-	_, _, _, err := b.FinalizeAndAssemble(nil, h, nil, body, nil)
+	_, _, _, err := b.FinalizeAndAssemble(nil, h, nil, body, nil, nil)
 	require.ErrorIs(t, err, consensus.ErrUnexpectedRequests)
 }
 func TestVerifySeal_BlockTooSoon(t *testing.T) {
@@ -3652,7 +4168,7 @@ func TestFinalize_SprintWithHeimdallCommitStates(t *testing.T) {
 
 	body := &types.Body{}
 	inputReceipts := make([]*types.Receipt, 0)
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
 }
@@ -3745,7 +4261,7 @@ func TestFinalize_StateSyncMismatch_EmptyBody(t *testing.T) {
 	body := &types.Body{}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.ErrorIs(t, err, core.ErrStateSyncMismatch)
 	require.ErrorContains(t, err, "block body missing state-sync transaction")
 	require.Nil(t, result)
@@ -3767,7 +4283,7 @@ func TestFinalize_StateSyncMismatch_LastTxNotStateSyncType(t *testing.T) {
 	body := &types.Body{Transactions: []*types.Transaction{legacyTx}}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.ErrorIs(t, err, core.ErrStateSyncMismatch)
 	require.ErrorContains(t, err, "block body missing state-sync transaction")
 	require.Nil(t, result)
@@ -3794,7 +4310,7 @@ func TestFinalize_StateSyncMismatch_WrongHash(t *testing.T) {
 	body := &types.Body{Transactions: []*types.Transaction{wrongTx}}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.ErrorIs(t, err, core.ErrStateSyncMismatch)
 	require.ErrorContains(t, err, "hash mismatch")
 	require.Nil(t, result)
@@ -3812,7 +4328,7 @@ func TestFinalize_ValidStateSyncTx(t *testing.T) {
 	body := &types.Body{Transactions: []*types.Transaction{matchingStateSyncTx()}}
 	inputReceipts := make([]*types.Receipt, 0)
 
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
 	// Finalize should have appended the state-sync receipt
@@ -3834,7 +4350,7 @@ func TestFinalize_StateSyncProcessingError(t *testing.T) {
 	body := &types.Body{}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.ErrorIs(t, err, core.ErrStateSyncProcessing)
 	require.ErrorContains(t, err, "error while committing states")
 	require.Nil(t, result)
@@ -3852,7 +4368,7 @@ func TestFinalize_NoStateSyncEvents_EmptyBodyOK(t *testing.T) {
 	body := &types.Body{}
 	inputReceipts := make([]*types.Receipt, 0)
 
-	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts)
+	receipts, err := b.Finalize(chain.HeaderChain(), h, statedb, body, inputReceipts, nil)
 	require.NoError(t, err)
 	require.NotNil(t, receipts)
 	require.Len(t, receipts, 0, "no state-sync receipt expected when there are no events")
@@ -3976,7 +4492,7 @@ func TestNew_WithHeimdallClient(t *testing.T) {
 	gc := &mockGenesisContractForCommitStatesIndore{lastStateID: 0}
 	hc := &mockHeimdallClient{span: nil}
 
-	bor := New(cfg, db, nil, sp, hc, nil, gc, false, 0)
+	bor := New(cfg, db, nil, sp, hc, nil, gc, false, 0, vm.Config{})
 	require.NotNil(t, bor)
 	require.NotNil(t, bor.HeimdallClient)
 	require.NoError(t, bor.Close())
@@ -4151,7 +4667,7 @@ func TestCommitStates_WithOverrideStateSyncRecords(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	// With OverrideStateSyncRecords truncating to 0, should get empty data
 	require.Empty(t, data)
@@ -4366,7 +4882,7 @@ func TestFinalize_WithBlockAlloc(t *testing.T) {
 	body := &types.Body{}
 	receipts := make([]*types.Receipt, 0)
 
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	// Should process without error - exercises changeContractCodeIfNeeded
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -4412,7 +4928,7 @@ func TestCommitStates_WithOverrideStateSyncRecordsInRange(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	require.Empty(t, data) // truncated to 0 by range override
 }
@@ -4451,7 +4967,7 @@ func TestCommitStates_StateSyncEventsError(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err) // error is logged but returns empty data
 	require.Empty(t, data)
 }
@@ -4501,7 +5017,7 @@ func TestCommitStates_EventIdLessThanLastStateId(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err)
 	// Event ID=3 should be skipped (3 <= 5), event ID=6 should be processed
 	require.Len(t, data, 1)
@@ -4550,7 +5066,7 @@ func TestCommitStates_EventValidationError(t *testing.T) {
 		GasLimit:   genesis.GasLimit,
 	}
 
-	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b})
+	data, err := b.CommitStates(statedb, h, statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b}, nil)
 	require.NoError(t, err) // validation error is logged but returned data should be empty
 	require.Empty(t, data)
 }
@@ -4588,7 +5104,7 @@ func TestFinalize_CheckAndCommitSpanError(t *testing.T) {
 
 	// checkAndCommitSpan -> FetchAndCommitSpan -> CommitSpan should fail,
 	// which means Finalize returns an error
-	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts)
+	result, err := b.Finalize(chain.HeaderChain(), h, statedb, body, receipts, nil)
 	require.Error(t, err)
 	require.Nil(t, result)
 }
@@ -5470,4 +5986,50 @@ func TestVerifyHeader_PreGiugliano_NoCheck(t *testing.T) {
 	if err != nil {
 		require.NotErrorIs(t, err, errMissingGiuglianoFields)
 	}
+}
+
+// TestApplyMessage_StateSyncTxContext validates if TxContext is correctly
+// set for state-sync transactions.
+func TestApplyMessage_StateSyncTxContext(t *testing.T) {
+	t.Parallel()
+	addr1 := common.HexToAddress("0x1")
+	sp := &fakeSpanner{vals: []*valset.Validator{{Address: addr1, VotingPower: 1}}}
+	chain, b := newChainAndBorForTest(t, sp, defaultBorConfig(), true, addr1, uint64(time.Now().Unix()))
+
+	genesis := chain.HeaderChain().GetHeaderByNumber(0)
+	statedb := newStateDBForTest(t, genesis.Root)
+
+	// SSTORE(0, ORIGIN); SSTORE(1, GASPRICE); STOP.
+	addr := common.HexToAddress("0xc0ffee")
+	statedb.SetCode(addr, []byte{
+		0x32,       // ORIGIN
+		0x60, 0x00, // PUSH1 0
+		0x55,       // SSTORE -> slot 0 = origin
+		0x3a,       // GASPRICE
+		0x60, 0x01, // PUSH1 1
+		0x55, // SSTORE -> slot 1 = gasprice
+		0x00, // STOP
+	}, tracing.CodeChangeUnspecified)
+
+	h := &types.Header{
+		Number:     big.NewInt(1),
+		ParentHash: genesis.Hash(),
+		Time:       genesis.Time + 2,
+		Coinbase:   addr1,
+		Difficulty: big.NewInt(1),
+	}
+
+	msg := statefull.GetSystemMessage(addr, nil)
+	_, err := statefull.ApplyMessage(
+		context.Background(), msg, statedb, h, chain.Config(),
+		statefull.ChainContext{Chain: chain.HeaderChain(), Bor: b},
+		vm.Config{},
+	)
+	require.NoError(t, err)
+
+	gotOrigin := common.BytesToAddress(statedb.GetState(addr, common.Hash{}).Bytes())
+	require.Equal(t, common.Address{}, gotOrigin, "ORIGIN must be zero address")
+
+	gotGasprice := statedb.GetState(addr, common.BigToHash(big.NewInt(1)))
+	require.Equal(t, common.Hash{}, gotGasprice, "GASPRICE must be 0")
 }
