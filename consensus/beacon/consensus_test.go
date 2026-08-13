@@ -151,7 +151,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 		header := createBeaconHeader(1, 5000000, 1000000, common.Big0)
 		body := createBeaconBody([]*types.Withdrawal{})
 
-		block, receipts, commitTime, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{})
+		block, receipts, commitTime, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{}, nil)
 		verifyFinalizeAndAssembleSuccess(t, block, receipts, commitTime, err, header)
 		t.Logf("Commit time for PoS block: %v", commitTime)
 	})
@@ -174,7 +174,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 		header.ParentHash = common.Hash{0x01}
 		body := createBeaconBody([]*types.Withdrawal{})
 
-		block, receipts, commitTime, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{})
+		block, receipts, commitTime, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{}, nil)
 		verifyFinalizeAndAssembleSuccess(t, block, receipts, commitTime, err, header)
 		t.Logf("Commit time for PoS block with 100 storage entries: %v", commitTime)
 	})
@@ -186,7 +186,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 		header := createBeaconHeader(1, 5000000, 1000000, big.NewInt(1)) // Non-zero difficulty
 		body := createBeaconBody([]*types.Withdrawal{})
 
-		block, receipts, commitTime, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{})
+		block, receipts, commitTime, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{}, nil)
 		verifyFinalizeAndAssembleSuccess(t, block, receipts, commitTime, err, header)
 		t.Logf("Commit time for pre-merge block (delegated to ethash): %v", commitTime)
 	})
@@ -199,7 +199,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 		header := createBeaconHeader(1, 5000000, 1000000, common.Big0)
 		body := createBeaconBody([]*types.Withdrawal{{Validator: 1, Address: common.Address{0x01}, Amount: 100}})
 
-		_, _, _, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{})
+		_, _, _, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{}, nil)
 
 		if err == nil {
 			t.Fatal("FinalizeAndAssemble should have failed with withdrawals before Shanghai")
@@ -217,7 +217,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 		header := createBeaconHeader(1, 5000000, 1000000, common.Big0)
 		body := createBeaconBody(nil) // nil should be initialized to empty slice
 
-		block, receipts, commitTime, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{})
+		block, receipts, commitTime, err := engine.FinalizeAndAssemble(chain, header, statedb, body, []*types.Receipt{}, nil)
 		verifyFinalizeAndAssembleSuccess(t, block, receipts, commitTime, err, header)
 
 		// Verify withdrawals were initialized to empty slice (not nil)
