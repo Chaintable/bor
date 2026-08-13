@@ -340,7 +340,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 		Withdrawals:  []*types.Withdrawal{},
 	}
 
-	b1, r1, ct1, e1 := ethashEngine.FinalizeAndAssemble(fakeChain, firstHeader, stateBuilder1.getState(), firstBody, []*types.Receipt{})
+	b1, r1, ct1, e1 := ethashEngine.FinalizeAndAssemble(fakeChain, firstHeader, stateBuilder1.getState(), firstBody, []*types.Receipt{}, nil)
 	result1 := &blockAssemblyResult{block: b1, receipts: r1, commitDuration: ct1, err: e1}
 	assertBlockValid(t, result1, firstHeader)
 
@@ -372,7 +372,7 @@ func TestFinalizeAndAssembleReturnsCommitTime(t *testing.T) {
 		Withdrawals:  []*types.Withdrawal{},
 	}
 
-	b2, r2, ct2, e2 := ethashEngine.FinalizeAndAssemble(fakeChain, secondHeader, stateBuilder2.getState(), secondBody, []*types.Receipt{})
+	b2, r2, ct2, e2 := ethashEngine.FinalizeAndAssemble(fakeChain, secondHeader, stateBuilder2.getState(), secondBody, []*types.Receipt{}, nil)
 	result2 := &blockAssemblyResult{block: b2, receipts: r2, commitDuration: ct2, err: e2}
 	assertBlockValid(t, result2, secondHeader)
 

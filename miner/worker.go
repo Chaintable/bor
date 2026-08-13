@@ -2070,7 +2070,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 
 	var block *types.Block
-	block, work.receipts, _, err = w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts)
+	block, work.receipts, _, err = w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts, w.vmConfig().Tracer)
 
 	if err != nil {
 		return &newPayloadResult{err: err}
@@ -2788,7 +2788,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		var commitTime time.Duration
 		block, env.receipts, commitTime, err = w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, &types.Body{
 			Transactions: env.txs,
-		}, env.receipts)
+		}, env.receipts, w.vmConfig().Tracer)
 		finalizeDuration := time.Since(finalizeStart)
 		finalizeAndAssembleTimer.Update(finalizeDuration)
 		intermediateRootTimer.Update(commitTime)
@@ -2905,12 +2905,9 @@ func (w *worker) deletePendingTask(sealHash common.Hash) bool {
 // vmConfig returns the VM config.
 func (w *worker) vmConfig() vm.Config {
 	cfg := *w.chain.GetVMConfig()
-	// The miner copies its vm.Config from the chain instance, which may include
-	// a vm.Config.Tracer intended only for live tracing, not for mining. Clear
-	// the tracer here to prevent the miner from tracing block production and
-	// conflicting with live tracing.
+	// The miner maintains pending work even when sealing is not enabled. Live
+	// tracers are process-wide and may not be safe to share with block import.
 	cfg.Tracer = nil
-
 	return cfg
 }
 

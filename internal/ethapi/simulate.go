@@ -430,7 +430,7 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	}
 	blockBody := &types.Body{Transactions: txes, Withdrawals: withdrawals}
 	chainHeadReader := &simChainHeadReader{ctx, sim.b}
-	b, receipts, _, err := sim.b.Engine().FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts)
+	b, receipts, _, err := sim.b.Engine().FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts, vmConfig.Tracer)
 	_ = receipts // mark unused
 	if err != nil {
 		return nil, nil, nil, err
