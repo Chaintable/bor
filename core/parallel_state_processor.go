@@ -1189,7 +1189,7 @@ func (p *V2StateProcessor) finalizeV2Block(block *types.Block, statedb *state.St
 	tProcess, tSetup, tCopy, tExec time.Time,
 ) (*ProcessResult, error) {
 	receiptsCountBeforeFinalize := len(result.Receipts)
-	receipts, err := p.chain.Engine().Finalize(p.chain, header, statedb, block.Body(), result.Receipts)
+	receipts, err := p.chain.Engine().Finalize(p.chain, header, statedb, block.Body(), result.Receipts, nil)
 	if err != nil {
 		return nil, err
 	}
